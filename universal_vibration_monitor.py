@@ -756,7 +756,9 @@ class UniversalVibrationMonitor:
         
         self.running = False
         self.system_status['running'] = False
-        self.cleanup()
+        # Don't call cleanup here - it closes the serial port
+        # We want to keep the app running for web interface
+        print("Monitoring paused - web interface still active")
     
     def display_reading(self, reading: SensorReading):
         """Display sensor reading with analysis"""
@@ -1602,8 +1604,18 @@ def main():
     print("Web API started on http://localhost:5000")
     print("")
     
-    # Start monitoring
-    monitor_instance.run_monitoring()
+    # Start monitoring in a separate thread
+    monitor_thread = threading.Thread(target=monitor_instance.run_monitoring)
+    monitor_thread.start()
+    
+    # Keep the main thread alive for the web interface
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        monitor_instance.running = False
+        monitor_instance.cleanup()
 
 if __name__ == "__main__":
     main()
