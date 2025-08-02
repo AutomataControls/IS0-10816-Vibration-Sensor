@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-automatanexus-hvac-vibration",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "AutomataNexus Industrial Vibration Monitoring - Professional WTVB01-485 integration for industrial equipment with ISO 10816 compliance",
   "keywords": [
     "node-red",

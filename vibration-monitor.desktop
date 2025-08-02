@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=AutomataNexus Vibration Monitor
+Comment=Professional Industrial Vibration Monitoring System
+Exec=/usr/bin/python3 /home/Automata/automatanexus-node-red-dev/vibration-monitor-desktop.py
+Icon=/home/Automata/automatanexus-node-red-dev/IS0-10816-Vibration-Monitor-UI/src-tauri/icons/icon.png
+Terminal=false
+Type=Application
+Categories=Development;Engineering;
+StartupNotify=true
+Keywords=vibration;monitor;industrial;sensor;wtvb01;

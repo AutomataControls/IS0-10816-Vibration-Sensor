@@ -16,6 +16,13 @@ This Node-RED node provides professional-grade parsing and analysis of WitMotion
 - **Global Variables**: Optional Node-RED global variable integration for dashboard compatibility
 - **Maintenance Predictions**: Estimated remaining useful life based on vibration trends
 
+## What's New in v2.2.0
+
+- Direct integration with multi-port monitoring system API
+- Parser trusts monitoring system's configuration instead of overriding it
+- Automatic detection of monitoring API JSON format
+- Equipment configuration from API is preserved (HP, voltage, phase)
+
 ## What's New in v2.1.0
 
 - Support for equipment name-based identification (e.g., "Cooling_Tower_1")
@@ -53,7 +60,7 @@ Or install directly from Node-RED's palette manager.
 [OK] 10:01:35 | Cooling_Tower_1 | RMS: 0.0246g | Velocity: 1.28mm/s | ISO Zone: A | Temp: 77.0°F
 ```
 
-### JSON API Format
+### JSON API Format (Direct)
 ```json
 {
   "equipment_name": "Cooling_Tower_1",
@@ -63,6 +70,22 @@ Or install directly from Node-RED's palette manager.
   "velocity_mms": 1.28,
   "iso_zone": "A",
   "alert_level": "NORMAL"
+}
+```
+
+### Monitoring API Format (v2.2.0+)
+```json
+{
+  "Cooling_Tower_1": {
+    "temperature_f": 77.0,
+    "rms_acceleration": 0.0246,
+    "velocity_mms": 1.28,
+    "iso_zone": "A",
+    "alert_level": "NORMAL",
+    "hp": 50,
+    "voltage": 480,
+    "phase": 3
+  }
 }
 ```
 

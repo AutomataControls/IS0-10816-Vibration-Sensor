@@ -211,7 +211,13 @@ module.exports = function(RED) {
                         data = JSON.parse(payload);
                     }
                 } else if (typeof payload === 'object') {
-                    data = payload;
+                    // Check if this is monitoring API data (has equipment names as keys)
+                    if (isMonitoringAPIData(payload)) {
+                        // Convert monitoring API format to standard format
+                        data = convertMonitoringAPIData(payload);
+                    } else {
+                        data = payload;
+                    }
                 }
                 
                 return standardizeIndustrialData(data);
@@ -219,6 +225,56 @@ module.exports = function(RED) {
             } catch (error) {
                 return null;
             }
+        }
+        
+        // Check if data is from monitoring API (equipment names as keys)
+        function isMonitoringAPIData(data) {
+            // Monitoring API has equipment names as keys with sensor data as values
+            for (let key in data) {
+                if (data.hasOwnProperty(key)) {
+                    let value = data[key];
+                    if (typeof value === 'object' && 
+                        (value.hasOwnProperty('temperature_f') || 
+                         value.hasOwnProperty('rms_acceleration') ||
+                         value.hasOwnProperty('velocity_mms'))) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        
+        // Convert monitoring API format to parser format
+        function convertMonitoringAPIData(apiData) {
+            // Take the first equipment entry
+            let equipmentName = Object.keys(apiData)[0];
+            let sensorData = apiData[equipmentName];
+            
+            return {
+                equipment_name: equipmentName,
+                equipment_type: detectEquipmentType(equipmentName),
+                temperature_f: sensorData.temperature_f,
+                vibration_velocity: sensorData.velocity_mms,
+                rms_acceleration: sensorData.rms_acceleration,
+                iso_zone: sensorData.iso_zone,
+                alert_level: sensorData.alert_level || "NORMAL",
+                // Include any additional fields from API
+                hp: sensorData.hp,
+                voltage: sensorData.voltage,
+                phase: sensorData.phase
+            };
+        }
+        
+        // Detect equipment type from name
+        function detectEquipmentType(name) {
+            let lowerName = name.toLowerCase();
+            if (lowerName.includes('cooling_tower')) return 'COOLING_TOWER';
+            if (lowerName.includes('pump')) return 'CENTRIFUGAL_PUMP';
+            if (lowerName.includes('compressor')) return 'SCREW_COMPRESSOR';
+            if (lowerName.includes('fan')) return 'HVAC_FAN';
+            if (lowerName.includes('blower')) return 'BLOWER';
+            if (lowerName.includes('mixer')) return 'MIXER_AGITATOR';
+            return 'MOTOR_GENERAL';
         }
         
         // Parse console output
@@ -317,18 +373,32 @@ module.exports = function(RED) {
             
             if (!rawData.sensor_address && !rawData.equipment_name) return null;
             
-            // Get sensor configuration
-            let sensorConfig = node.sensorMap[rawData.sensor_address] || {
-                name: rawData.equipment_name || `Sensor_${rawData.sensor_address}`,
-                type: rawData.equipment_type || "MOTOR_GENERAL",
-                location: "Unknown",
-                powerKW: 30, // Default 30kW if not specified
-                foundationType: "rigid"
-            };
+            // Get sensor configuration - prefer data from message over internal config
+            let sensorConfig;
             
-            // Override with data from the message if available
-            if (rawData.equipment_name) sensorConfig.name = rawData.equipment_name;
-            if (rawData.equipment_type) sensorConfig.type = rawData.equipment_type;
+            // If we have full equipment data from the monitoring API, use it directly
+            if (rawData.equipment_name && rawData.equipment_type) {
+                sensorConfig = {
+                    name: rawData.equipment_name,
+                    type: rawData.equipment_type,
+                    location: rawData.location || "From Monitoring System",
+                    powerHP: rawData.hp,
+                    powerKW: rawData.hp ? rawData.hp * 0.746 : 30,
+                    foundationType: rawData.mounting || "rigid",
+                    rpmNominal: rawData.rpm || 1800,
+                    voltage: rawData.voltage,
+                    phase: rawData.phase
+                };
+            } else {
+                // Fall back to internal configuration or defaults
+                sensorConfig = node.sensorMap[rawData.sensor_address] || {
+                    name: rawData.equipment_name || `Sensor_${rawData.sensor_address}`,
+                    type: rawData.equipment_type || "MOTOR_GENERAL",
+                    location: "Unknown",
+                    powerKW: 30, // Default 30kW if not specified
+                    foundationType: "rigid"
+                };
+            }
             
             // Get equipment type configuration
             let equipmentStandard = ISO_STANDARDS[sensorConfig.type] || ISO_STANDARDS["MOTOR_GENERAL"];
@@ -436,38 +506,78 @@ module.exports = function(RED) {
                 }
             }
             
-            // ISO zone classification
-            let velocity = industrialData.vibration.velocity_mms;
-            if (velocity < isoZones.A) {
-                industrialData.iso_zone = "A";
-                industrialData.equipment_condition = "EXCELLENT";
-                industrialData.maintenance_priority = "LOW";
-                industrialData.estimated_rul_days = 365;
-            } else if (velocity < isoZones.B) {
-                industrialData.iso_zone = "B";
-                industrialData.equipment_condition = "GOOD";
-                industrialData.maintenance_priority = "LOW";
-                industrialData.estimated_rul_days = 180;
-            } else if (velocity < isoZones.C) {
-                industrialData.iso_zone = "C";
-                industrialData.equipment_condition = "FAIR";
-                industrialData.maintenance_priority = "MEDIUM";
-                industrialData.estimated_rul_days = 90;
-                industrialData.alerts.push({
-                    type: "VIBRATION_WARNING",
-                    message: `Vibration ${velocity.toFixed(2)} mm/s exceeds ISO ${isoClass} Zone B (${isoZones.B} mm/s)`,
-                    severity: "WARNING"
-                });
+            // ISO zone classification - use provided zone if available
+            if (rawData.iso_zone) {
+                // Trust the ISO zone from the monitoring API
+                industrialData.iso_zone = rawData.iso_zone;
+                
+                // Set condition based on zone
+                switch(rawData.iso_zone) {
+                    case "A":
+                        industrialData.equipment_condition = "EXCELLENT";
+                        industrialData.maintenance_priority = "LOW";
+                        industrialData.estimated_rul_days = 365;
+                        break;
+                    case "B":
+                        industrialData.equipment_condition = "GOOD";
+                        industrialData.maintenance_priority = "LOW";
+                        industrialData.estimated_rul_days = 180;
+                        break;
+                    case "C":
+                        industrialData.equipment_condition = "FAIR";
+                        industrialData.maintenance_priority = "MEDIUM";
+                        industrialData.estimated_rul_days = 90;
+                        industrialData.alerts.push({
+                            type: "VIBRATION_WARNING",
+                            message: `Equipment in ISO Zone C - Schedule maintenance`,
+                            severity: "WARNING"
+                        });
+                        break;
+                    case "D":
+                        industrialData.equipment_condition = "POOR";
+                        industrialData.maintenance_priority = "HIGH";
+                        industrialData.estimated_rul_days = 30;
+                        industrialData.alerts.push({
+                            type: "VIBRATION_CRITICAL",
+                            message: `Equipment in ISO Zone D - Immediate attention required`,
+                            severity: "CRITICAL"
+                        });
+                        break;
+                }
             } else {
-                industrialData.iso_zone = "D";
-                industrialData.equipment_condition = "POOR";
-                industrialData.maintenance_priority = "HIGH";
-                industrialData.estimated_rul_days = 30;
-                industrialData.alerts.push({
-                    type: "VIBRATION_CRITICAL",
-                    message: `Vibration ${velocity.toFixed(2)} mm/s exceeds ISO ${isoClass} Zone C (${isoZones.C} mm/s)`,
-                    severity: "CRITICAL"
-                });
+                // Calculate ISO zone if not provided
+                let velocity = industrialData.vibration.velocity_mms;
+                if (velocity < isoZones.A) {
+                    industrialData.iso_zone = "A";
+                    industrialData.equipment_condition = "EXCELLENT";
+                    industrialData.maintenance_priority = "LOW";
+                    industrialData.estimated_rul_days = 365;
+                } else if (velocity < isoZones.B) {
+                    industrialData.iso_zone = "B";
+                    industrialData.equipment_condition = "GOOD";
+                    industrialData.maintenance_priority = "LOW";
+                    industrialData.estimated_rul_days = 180;
+                } else if (velocity < isoZones.C) {
+                    industrialData.iso_zone = "C";
+                    industrialData.equipment_condition = "FAIR";
+                    industrialData.maintenance_priority = "MEDIUM";
+                    industrialData.estimated_rul_days = 90;
+                    industrialData.alerts.push({
+                        type: "VIBRATION_WARNING",
+                        message: `Vibration ${velocity.toFixed(2)} mm/s exceeds ISO ${isoClass} Zone B (${isoZones.B} mm/s)`,
+                        severity: "WARNING"
+                    });
+                } else {
+                    industrialData.iso_zone = "D";
+                    industrialData.equipment_condition = "POOR";
+                    industrialData.maintenance_priority = "HIGH";
+                    industrialData.estimated_rul_days = 30;
+                    industrialData.alerts.push({
+                        type: "VIBRATION_CRITICAL",
+                        message: `Vibration ${velocity.toFixed(2)} mm/s exceeds ISO ${isoClass} Zone C (${isoZones.C} mm/s)`,
+                        severity: "CRITICAL"
+                    });
+                }
             }
             
             // Temperature alerts

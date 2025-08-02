@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.2.0] - 2025-08-02
+
+### Added
+- Direct support for monitoring API JSON format with equipment names as keys
+- Automatic detection and conversion of monitoring API data format
+- Trust monitoring system's ISO zone calculations and equipment configuration
+
+### Changed
+- Parser now prefers configuration from monitoring API over internal sensorMappings
+- Equipment configuration (HP, voltage, phase) from API is preserved
+- ISO zones from monitoring API are trusted instead of recalculated
+- Better integration with multi-port monitoring system
+
+### Fixed
+- Parser no longer overrides monitoring system configuration with internal defaults
+- Equipment names and types from monitoring API are properly preserved
+
 ## [2.1.0] - 2025-08-02
 
 ### Added

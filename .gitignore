@@ -36,6 +36,7 @@ vibration_monitor.log
 # Data files
 *.csv
 sensor_config.json
+equipment_config.json
 vibration_data_*.csv
 
 # IDE
