@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutomataNexus Vibration Monitor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+        }
+        .header {
+            background: #fff;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .logo-circle {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #14b8a6, #0891b2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        .tabs {
+            display: flex;
+            background: #fff;
+            border-bottom: 1px solid #e5e5e5;
+        }
+        .tab {
+            padding: 1rem 2rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 16px;
+            border-bottom: 3px solid transparent;
+        }
+        .tab:hover { background: #f9f9f9; }
+        .tab.active {
+            color: #f97316;
+            border-bottom-color: #f97316;
+        }
+        .content { padding: 2rem; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .sensor-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+        .sensor-card {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .zone-a { border-left: 4px solid #22c55e; }
+        .zone-b { border-left: 4px solid #eab308; }
+        .zone-c { border-left: 4px solid #f97316; }
+        .zone-d { border-left: 4px solid #ef4444; }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.5rem 0;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            background: #f97316;
+            color: white;
+        }
+        .btn:hover { background: #ea580c; }
+        .form-group {
+            margin: 1rem 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #666;
+        }
+        input, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .status { 
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 14px;
+            display: inline-block;
+        }
+        .status.online { background: #d4edda; color: #155724; }
+        .status.offline { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <div class="logo-circle">AN</div>
+            <h1>AutomataNexus Vibration Monitor</h1>
+        </div>
+        <div>
+            <span id="connection-status" class="status offline">Offline</span>
+            <button class="btn" onclick="location.reload()">↻ Refresh</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="showTab('monitoring', this)">📊 Monitoring</button>
+        <button class="tab" onclick="showTab('config', this)">⚙️ Configuration</button>
+        <button class="tab" onclick="showTab('control', this)">🎛️ Control</button>
+    </div>
+
+    <div class="content">
+        <!-- Monitoring Tab -->
+        <div id="monitoring" class="section active">
+            <h2 style="margin-bottom: 1rem;">Live Sensor Data</h2>
+            <div id="sensor-data" class="sensor-grid">
+                <div style="text-align: center; color: #666;">
+                    <p>Loading sensor data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Tab -->
+        <div id="config" class="section">
+            <h2 style="margin-bottom: 1rem;">Equipment Configuration</h2>
+            <button class="btn" onclick="scanPorts()" style="margin-bottom: 1rem;">🔍 Scan for USB Ports</button>
+            <div id="config-list" class="sensor-grid"></div>
+        </div>
+
+        <!-- Control Tab -->
+        <div id="control" class="section">
+            <h2 style="margin-bottom: 1rem;">System Control</h2>
+            <div style="display: flex; gap: 1rem;">
+                <button class="btn" onclick="startMonitoring()">▶️ Start Monitoring</button>
+                <button class="btn" onclick="stopMonitoring()" style="background: #dc3545;">⏹️ Stop Monitoring</button>
+            </div>
+            <div id="control-status" style="margin-top: 2rem;"></div>
+        </div>
+    </div>
+
+    <script>
+        // Simple and working JavaScript
+        const API_BASE = 'http://localhost:5000/api';
+        let updateInterval;
+
+        function showTab(tabName, btn) {
+            // Hide all sections
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Load data for tab
+            if (tabName === 'monitoring') {
+                startAutoUpdate();
+            } else {
+                stopAutoUpdate();
+                if (tabName === 'config') {
+                    loadConfig();
+                }
+            }
+        }
+
+        async function loadSensorData() {
+            try {
+                const response = await fetch(`${API_BASE}/data`);
+                const data = await response.json();
+                
+                document.getElementById('connection-status').className = 'status online';
+                document.getElementById('connection-status').textContent = 'Online';
+                
+                const container = document.getElementById('sensor-data');
+                
+                if (Object.keys(data).length === 0) {
+                    container.innerHTML = '<div style="text-align: center; color: #666;"><p>No sensor data. Make sure monitoring is started.</p></div>';
+                    return;
+                }
+                
+                container.innerHTML = Object.entries(data).map(([name, sensor]) => `
+                    <div class="sensor-card zone-${sensor.iso_zone.toLowerCase()}">
+                        <h3 style="margin-bottom: 1rem;">${name}</h3>
+                        <div class="metric">
+                            <span>Temperature</span>
+                            <strong>${sensor.temperature_f.toFixed(1)}°F</strong>
+                        </div>
+                        <div class="metric">
+                            <span>Velocity</span>
+                            <strong>${sensor.velocity_mms.toFixed(2)} mm/s</strong>
+                        </div>
+                        <div class="metric">
+                            <span>RMS Acceleration</span>
+                            <strong>${sensor.rms_acceleration.toFixed(4)}g</strong>
+                        </div>
+                        <div class="metric">
+                            <span>ISO Zone</span>
+                            <strong style="color: ${sensor.iso_zone === 'A' ? '#22c55e' : sensor.iso_zone === 'B' ? '#eab308' : sensor.iso_zone === 'C' ? '#f97316' : '#ef4444'}">${sensor.iso_zone}</strong>
+                        </div>
+                        <div class="metric">
+                            <span>Status</span>
+                            <strong>${sensor.alert_level}</strong>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('connection-status').className = 'status offline';
+                document.getElementById('connection-status').textContent = 'Offline';
+                document.getElementById('sensor-data').innerHTML = '<div style="text-align: center; color: #dc3545;"><p>Error: Cannot connect to monitoring service</p></div>';
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch(`${API_BASE}/equipment_config`);
+                const config = await response.json();
+                
+                const container = document.getElementById('config-list');
+                
+                if (Object.keys(config).length === 0) {
+                    container.innerHTML = '<div style="color: #666;"><p>No configurations found. Click "Scan for USB Ports" to detect sensors.</p></div>';
+                    return;
+                }
+                
+                container.innerHTML = Object.entries(config).map(([port, cfg]) => `
+                    <div class="sensor-card">
+                        <h3>${cfg.equipment_name}</h3>
+                        <p style="color: #666; margin-bottom: 0.5rem;">${port}</p>
+                        <div class="metric">
+                            <span>Type</span>
+                            <span>${cfg.equipment_type.replace(/_/g, ' ')}</span>
+                        </div>
+                        <div class="metric">
+                            <span>Power</span>
+                            <span>${cfg.hp} HP</span>
+                        </div>
+                        <div class="metric">
+                            <span>Voltage</span>
+                            <span>${cfg.voltage}V ${cfg.phase}φ</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('config-list').innerHTML = '<div style="color: #dc3545;"><p>Error loading configuration</p></div>';
+            }
+        }
+
+        async function scanPorts() {
+            try {
+                const response = await fetch(`${API_BASE}/scan_ports`);
+                const data = await response.json();
+                
+                if (data.ports.length === 0) {
+                    alert('No USB ports found. Check connections.');
+                    return;
+                }
+                
+                const container = document.getElementById('config-list');
+                container.innerHTML = data.ports.map(port => `
+                    <div class="sensor-card">
+                        <h3>${port}</h3>
+                        <form onsubmit="saveConfig('${port}', event)">
+                            <div class="form-group">
+                                <label>Equipment Name</label>
+                                <input type="text" name="equipment_name" required placeholder="e.g., Cooling_Tower_1">
+                            </div>
+                            <div class="form-group">
+                                <label>Equipment Type</label>
+                                <select name="equipment_type" required>
+                                    <option value="cooling_tower_motor">Cooling Tower Motor</option>
+                                    <option value="centrifugal_pump">Centrifugal Pump</option>
+                                    <option value="fan_motor">Fan Motor</option>
+                                    <option value="general_motor">General Motor</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>HP</label>
+                                <input type="number" name="hp" required min="3" max="50" value="50">
+                            </div>
+                            <div class="form-group">
+                                <label>Voltage</label>
+                                <select name="voltage" required>
+                                    <option value="208">208V</option>
+                                    <option value="230">230V</option>
+                                    <option value="460">460V</option>
+                                    <option value="480" selected>480V</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Phase</label>
+                                <select name="phase" required>
+                                    <option value="1">Single Phase</option>
+                                    <option value="3" selected>Three Phase</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn">Save Configuration</button>
+                        </form>
+                    </div>
+                `).join('');
+            } catch (error) {
+                alert('Error scanning ports: ' + error.message);
+            }
+        }
+
+        async function saveConfig(port, event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            
+            const config = {
+                port: port,
+                equipment_name: formData.get('equipment_name'),
+                equipment_type: formData.get('equipment_type'),
+                hp: parseInt(formData.get('hp')),
+                voltage: parseInt(formData.get('voltage')),
+                phase: parseInt(formData.get('phase')),
+                rpm: 1800,
+                mounting: 'rigid'
+            };
+            
+            try {
+                const response = await fetch(`${API_BASE}/save_equipment_config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    alert('Configuration saved!');
+                    loadConfig();
+                } else {
+                    alert('Error saving configuration');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function startMonitoring() {
+            try {
+                const response = await fetch(`${API_BASE}/start`, { method: 'POST' });
+                const result = await response.json();
+                document.getElementById('control-status').innerHTML = '<p style="color: #28a745;">Monitoring started successfully!</p>';
+            } catch (error) {
+                document.getElementById('control-status').innerHTML = '<p style="color: #dc3545;">Error starting monitoring</p>';
+            }
+        }
+
+        async function stopMonitoring() {
+            try {
+                const response = await fetch(`${API_BASE}/stop`, { method: 'POST' });
+                const result = await response.json();
+                document.getElementById('control-status').innerHTML = '<p style="color: #ffc107;">Monitoring stopped</p>';
+            } catch (error) {
+                document.getElementById('control-status').innerHTML = '<p style="color: #dc3545;">Error stopping monitoring</p>';
+            }
+        }
+
+        function startAutoUpdate() {
+            loadSensorData();
+            updateInterval = setInterval(loadSensorData, 5000);
+        }
+
+        function stopAutoUpdate() {
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+        }
+
+        // Start loading data
+        startAutoUpdate();
+    </script>
+</body>
+</html>

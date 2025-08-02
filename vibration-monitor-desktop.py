@@ -39,10 +39,13 @@ def open_desktop_ui():
     else:
         # Fallback to browser
         print("Opening in web browser...")
-        # Open the local HTML file that connects to Flask backend
-        html_path = os.path.join(os.path.dirname(__file__), 
-                                "IS0-10816-Vibration-Monitor-UI", 
-                                "src", "index.html")
+        # Open the working monitoring HTML file
+        html_path = os.path.join(script_dir, "monitoring-app.html")
+        # If the new file doesn't exist, fall back to the original
+        if not os.path.exists(html_path):
+            html_path = os.path.join(script_dir, 
+                                    "IS0-10816-Vibration-Monitor-UI", 
+                                    "src", "index.html")
         webbrowser.open(f"file:///{html_path}")
 
 def main():
