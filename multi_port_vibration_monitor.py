@@ -429,9 +429,11 @@ def serve_web_interface():
         </div>
 
         <!-- Combined Chart -->
-        <div class="glass-card p-6">
+        <div class="glass-card p-6" id="chartContainer">
             <h3 class="text-xl mb-4">Vibration Trends</h3>
-            <canvas id="vibrationChart" height="100"></canvas>
+            <div style="height: 300px; position: relative; overflow: hidden;">
+                <canvas id="vibrationChart"></canvas>
+            </div>
         </div>
     </div>
 
@@ -517,9 +519,11 @@ def serve_web_interface():
             const configPanel = document.getElementById('configPanel');
             const sensorGrid = document.getElementById('sensorGrid');
             const formsDiv = document.getElementById('sensorConfigForms');
+            const chartContainer = document.getElementById('chartContainer');
             
             configPanel.classList.remove('hidden');
             sensorGrid.style.display = 'none';
+            if (chartContainer) chartContainer.style.display = 'none';
             
             // Create forms for each sensor
             formsDiv.innerHTML = '';
@@ -621,6 +625,9 @@ def serve_web_interface():
             if (allConfigured) {
                 document.getElementById('configPanel').classList.add('hidden');
                 document.getElementById('sensorGrid').style.display = '';
+                const chartContainer = document.getElementById('chartContainer');
+                if (chartContainer) chartContainer.style.display = '';
+                startAutoRefresh();
                 loadSensorData();
             }
         }
@@ -751,13 +758,22 @@ def serve_web_interface():
         }
 
         // Initialize
+        let refreshInterval = null;
         initChart();
         loadEquipmentTypes().then(() => {
             loadSensorData();
         });
         
-        // Auto-refresh
-        setInterval(loadSensorData, 1000);
+        // Auto-refresh only when configured
+        function startAutoRefresh() {
+            if (!refreshInterval) {
+                refreshInterval = setInterval(() => {
+                    if (systemStatus && systemStatus.configured) {
+                        loadSensorData();
+                    }
+                }, 1000);
+            }
+        }
     </script>
 </body>
 </html>
