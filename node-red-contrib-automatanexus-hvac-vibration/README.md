@@ -2,6 +2,8 @@
 
 Professional Industrial Vibration Monitoring for Node-RED by AutomataNexus AI
 
+**Commercial License Required** - See [COMMERCIAL.md](https://github.com/AutomataControls/IS0-10816-Vibration-Sensor/blob/main/COMMERCIAL.md) for licensing information.
+
 ## Overview
 
 This Node-RED node provides professional-grade parsing and analysis of WitMotion WTVB01-485 vibration sensor data for industrial equipment monitoring. It supports ISO 10816-3 compliance and handles multiple equipment types including cooling towers, pumps, compressors, and more.
@@ -15,6 +17,19 @@ This Node-RED node provides professional-grade parsing and analysis of WitMotion
 - **Real-time Alerts**: Generate warnings and critical alerts based on ISO standards
 - **Global Variables**: Optional Node-RED global variable integration for dashboard compatibility
 - **Maintenance Predictions**: Estimated remaining useful life based on vibration trends
+
+## What's New in v3.0.0-alpha.4
+
+- Added comprehensive commercial licensing documentation
+- Enhanced multi-sensor support for monitoring API
+- All equipment types now fully supported
+- Commercial license headers added to all source files
+
+## What's New in v3.0.0-alpha.3
+
+- Fixed multi-sensor processing from monitoring API
+- Returns array when multiple sensors detected
+- Preserves all equipment configuration from API
 
 ## What's New in v2.2.0
 
