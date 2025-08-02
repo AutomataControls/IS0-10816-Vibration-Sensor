@@ -1048,11 +1048,15 @@ def serve_web_interface():
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="glass-card p-6">
                 <h3 class="text-xl mb-4">Vibration Trend</h3>
-                <canvas id="vibrationChart" height="200"></canvas>
+                <div style="height: 300px; position: relative;">
+                    <canvas id="vibrationChart"></canvas>
+                </div>
             </div>
             <div class="glass-card p-6">
                 <h3 class="text-xl mb-4">Temperature Trend</h3>
-                <canvas id="temperatureChart" height="200"></canvas>
+                <div style="height: 300px; position: relative;">
+                    <canvas id="temperatureChart"></canvas>
+                </div>
             </div>
         </div>
     </div>
@@ -1073,6 +1077,12 @@ def serve_web_interface():
                         legend: { display: false }
                     },
                     scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
                         y: { beginAtZero: true }
                     }
                 }
