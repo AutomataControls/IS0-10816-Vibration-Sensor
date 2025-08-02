@@ -255,8 +255,8 @@ def main():
     print("Multi-Port Vibration Monitoring System")
     print("=" * 50)
     
-    # Define the three ports
-    ports = ['/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3']
+    # Define the ports - keeping all 4
+    ports = ['/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
     
     # Create monitor
     monitor_instance = MultiPortVibrationMonitor(ports)
