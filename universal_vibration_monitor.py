@@ -440,6 +440,31 @@ class WT901CMultiSensor:
         
         return None
     
+    def write_register(self, sensor_address: int, register: int, value: int):
+        """Write a value to a Modbus register"""
+        cmd = bytearray([sensor_address, 0x06, (register >> 8) & 0xFF, register & 0xFF, 
+                        (value >> 8) & 0xFF, value & 0xFF])
+        crc = self._calculate_crc16(cmd)
+        cmd.append(crc & 0xFF)
+        cmd.append((crc >> 8) & 0xFF)
+        
+        try:
+            self.serial_conn.reset_input_buffer()
+            self._send_command(bytes(cmd))
+            time.sleep(0.1)
+            
+            response = self.serial_conn.read(8)
+            if len(response) >= 8 and response[0] == sensor_address and response[1] == 0x06:
+                return True
+            return False
+        except Exception as e:
+            print(f"Write register error: {e}")
+            return False
+    
+    def read_single_sensor(self, sensor_address: int) -> Optional[SensorReading]:
+        """Read data from a single sensor (alias for read_sensor_data)"""
+        return self.read_sensor_data(sensor_address)
+    
     def close(self):
         """Clean up resources"""
         if self.serial_conn and self.serial_conn.is_open:
@@ -798,6 +823,37 @@ class UniversalVibrationMonitor:
         self.csv_writer.writerow(row)
         self.csv_file.flush()
     
+    def test_sensor_connection(self, address: int) -> bool:
+        """Test if a sensor responds at the given address"""
+        try:
+            # Try to read status register
+            reading = self.sensor_manager.read_single_sensor(address)
+            return reading is not None
+        except:
+            return False
+    
+    def program_sensor_address(self, current_address: int, new_address: int) -> bool:
+        """Program a new address for a sensor"""
+        try:
+            # Implementation for WTVB01-485 address programming
+            # First unlock the register
+            self.sensor_manager.write_register(current_address, 0x69, 0xB588)
+            time.sleep(0.1)
+            
+            # Write new address to register 0x1A
+            self.sensor_manager.write_register(current_address, 0x1A, new_address)
+            time.sleep(0.5)
+            
+            # Save settings to flash
+            self.sensor_manager.write_register(current_address, 0x00, 0x0000)
+            time.sleep(0.5)
+            
+            # Verify the change
+            return self.test_sensor_connection(new_address)
+        except Exception as e:
+            print(f"Error programming address: {e}")
+            return False
+    
     def cleanup(self):
         """Clean up resources"""
         self.sensor_manager.close()
@@ -945,6 +1001,46 @@ def stop_monitoring():
         return jsonify({'success': True, 'message': 'Monitoring stopped'})
     return jsonify({'error': 'Not running'}), 400
 
+@app.route('/api/scan', methods=['GET'])
+def scan_sensors():
+    """Scan for sensors on the bus"""
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 400
+    
+    found_sensors = []
+    # Scan common addresses
+    for addr in range(0x50, 0x70):
+        if monitor_instance.test_sensor_connection(addr):
+            found_sensors.append({
+                'address': addr,
+                'configured': addr in [s.address for s in monitor_instance.config.sensors]
+            })
+    
+    return jsonify(found_sensors)
+
+@app.route('/api/program-address', methods=['POST'])
+def program_sensor_address():
+    """Program a new sensor address"""
+    data = request.json
+    current_addr = data.get('current_address')
+    new_addr = data.get('new_address')
+    
+    if not all([current_addr, new_addr]):
+        return jsonify({'error': 'Missing address parameters'}), 400
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 400
+    
+    try:
+        # Program the address
+        success = monitor_instance.program_sensor_address(current_addr, new_addr)
+        if success:
+            return jsonify({'success': True, 'message': f'Address changed from 0x{current_addr:02X} to 0x{new_addr:02X}'})
+        else:
+            return jsonify({'error': 'Failed to program address'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Serve web interface (if you create one)
 @app.route('/')
 def serve_web_interface():
@@ -1034,6 +1130,49 @@ def serve_web_interface():
                 <button onclick="exportData()" class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
                     📊 Export Data
                 </button>
+                <button onclick="openConfig()" class="px-6 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors">
+                    ⚙️ Configure Sensors
+                </button>
+                <button onclick="scanSensors()" class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
+                    🔍 Scan for Sensors
+                </button>
+            </div>
+        </div>
+
+        <!-- Configuration Modal -->
+        <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50 flex items-center justify-center">
+            <div class="glass-card p-8 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                <h2 class="text-2xl mb-6">Sensor Configuration</h2>
+                
+                <div class="mb-6">
+                    <h3 class="text-lg mb-3">Detected Sensors</h3>
+                    <div id="detectedSensors" class="space-y-2">
+                        <p class="text-gray-600">Scanning...</p>
+                    </div>
+                </div>
+
+                <div class="border-t pt-6">
+                    <h3 class="text-lg mb-3">Program Sensor Address</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm mb-1">Current Address (hex)</label>
+                            <input type="text" id="currentAddr" placeholder="0x50" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-1">New Address (hex)</label>
+                            <input type="text" id="newAddr" placeholder="0x51" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    <button onclick="programAddress()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                        Program Address
+                    </button>
+                </div>
+
+                <div class="flex justify-end mt-6 gap-2">
+                    <button onclick="closeConfig()" class="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">
+                        Close
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -1282,6 +1421,70 @@ def serve_web_interface():
 
         function exportData() {
             window.open(`${API_BASE}/export/csv`, '_blank');
+        }
+
+        // Configuration functions
+        function openConfig() {
+            document.getElementById('configModal').classList.remove('hidden');
+            scanSensors();
+        }
+
+        function closeConfig() {
+            document.getElementById('configModal').classList.add('hidden');
+        }
+
+        async function scanSensors() {
+            const sensorsDiv = document.getElementById('detectedSensors');
+            sensorsDiv.innerHTML = '<p class="text-gray-600">Scanning...</p>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/scan`);
+                const sensors = await response.json();
+                
+                if (sensors.length === 0) {
+                    sensorsDiv.innerHTML = '<p class="text-gray-600">No sensors found</p>';
+                } else {
+                    sensorsDiv.innerHTML = sensors.map(sensor => `
+                        <div class="flex justify-between items-center p-2 bg-gray-100 rounded">
+                            <span>Address: 0x${sensor.address.toString(16).toUpperCase().padStart(2, '0')}</span>
+                            <span class="text-sm text-gray-600">${sensor.configured ? 'Configured' : 'New'}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                sensorsDiv.innerHTML = '<p class="text-red-600">Scan failed</p>';
+            }
+        }
+
+        async function programAddress() {
+            const currentAddr = document.getElementById('currentAddr').value;
+            const newAddr = document.getElementById('newAddr').value;
+            
+            if (!currentAddr || !newAddr) {
+                alert('Please enter both current and new addresses');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/program-address`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        current_address: parseInt(currentAddr, 16),
+                        new_address: parseInt(newAddr, 16)
+                    })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('Address programmed successfully!');
+                    scanSensors();
+                } else {
+                    alert('Failed to program address: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error programming address');
+            }
         }
 
         // Initialize
