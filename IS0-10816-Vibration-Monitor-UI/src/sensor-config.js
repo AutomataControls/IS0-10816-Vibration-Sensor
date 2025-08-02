@@ -1,7 +1,10 @@
 // Sensor Configuration Module for Multi-Port Monitoring
 // Integrates with Flask backend API
 
-const API_BASE = 'http://localhost:5000';
+// Use the API_BASE from index.html if it exists, otherwise define it
+if (typeof API_BASE === 'undefined') {
+    var API_BASE = 'http://localhost:5000';
+}
 
 // Equipment types matching the backend
 const EQUIPMENT_TYPES = {

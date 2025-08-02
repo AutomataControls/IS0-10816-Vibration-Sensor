@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutomataNexus Universal Vibration Monitor</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind disabled for performance on Pi -->
+    <!-- <script src="https://cdn.tailwindcss.com"></script> -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="sensor-config.js"></script>
     <style>
@@ -408,13 +409,13 @@
         <!-- Tab Navigation -->
         <div class="tab-container">
             <div class="tab-nav">
-                <button class="tab-btn active" onclick="showTab('dashboard')">📊 Dashboard</button>
-                <button class="tab-btn" onclick="showTab('realtime')">📈 Real-time Analytics</button>
-                <button class="tab-btn" onclick="showTab('sensors')">🔧 Sensor Configuration</button>
-                <button class="tab-btn" onclick="showTab('alerts')">⚠️ Alert Management</button>
-                <button class="tab-btn" onclick="showTab('thresholds')">⚙️ Threshold Settings</button>
-                <button class="tab-btn" onclick="showTab('reports')">📋 Reports & Export</button>
-                <button class="tab-btn" onclick="showTab('system')">🖥️ System Control</button>
+                <button class="tab-btn active" onclick="showTab('dashboard', this)">📊 Dashboard</button>
+                <button class="tab-btn" onclick="showTab('realtime', this)">📈 Real-time Analytics</button>
+                <button class="tab-btn" onclick="showTab('sensors', this)">🔧 Sensor Configuration</button>
+                <button class="tab-btn" onclick="showTab('alerts', this)">⚠️ Alert Management</button>
+                <button class="tab-btn" onclick="showTab('thresholds', this)">⚙️ Threshold Settings</button>
+                <button class="tab-btn" onclick="showTab('reports', this)">📋 Reports & Export</button>
+                <button class="tab-btn" onclick="showTab('system', this)">🖥️ System Control</button>
             </div>
         </div>
 
@@ -685,6 +686,72 @@
         let charts = {};
         let updateInterval;
         const API_BASE = 'http://localhost:5000/api';
+        
+        // Refresh current data
+        function refreshData() {
+            // Get the active tab
+            const activeTab = document.querySelector('.tab-btn.active');
+            if (activeTab) {
+                const tabText = activeTab.textContent.toLowerCase();
+                if (tabText.includes('dashboard')) {
+                    loadSensorReadings();
+                } else if (tabText.includes('real-time')) {
+                    updateCharts();
+                } else if (tabText.includes('sensor')) {
+                    initializeSensorConfig();
+                } else if (tabText.includes('alert')) {
+                    loadAlerts();
+                }
+            }
+        }
+        
+        // Load sensor readings for dashboard
+        async function loadSensorReadings() {
+            try {
+                const response = await fetch('http://localhost:5000/api/data');
+                const data = await response.json();
+                
+                const container = document.getElementById('sensorReadingsList');
+                if (!container) return;
+                
+                if (Object.keys(data).length === 0) {
+                    container.innerHTML = '<div class="text-center py-8 text-gray-500">No sensor data available. Make sure monitoring is started.</div>';
+                    return;
+                }
+                
+                container.innerHTML = Object.entries(data).map(([name, sensor]) => `
+                    <div class="glass-card p-6">
+                        <h3 class="text-xl font-light mb-4">${name}</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-600">Temperature</p>
+                                <p class="text-2xl">${sensor.temperature_f.toFixed(1)}°F</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Velocity</p>
+                                <p class="text-2xl">${sensor.velocity_mms.toFixed(2)} mm/s</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">ISO Zone</p>
+                                <p class="text-2xl font-bold text-${sensor.iso_zone === 'A' ? 'green' : sensor.iso_zone === 'B' ? 'yellow' : sensor.iso_zone === 'C' ? 'orange' : 'red'}-600">${sensor.iso_zone}</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Status</p>
+                                <p class="text-lg">${sensor.alert_level}</p>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading sensor readings:', error);
+            }
+        }
+        
+        // Update charts (placeholder)
+        function updateCharts() {
+            console.log('Updating charts...');
+            // Chart update logic will go here
+        }
 
         // Initialize the application
         async function init() {
@@ -715,7 +782,7 @@
         }
 
         // Tab navigation
-        function showTab(tabName) {
+        function showTab(tabName, buttonElement) {
             // Hide all sections
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.add('hidden');
@@ -728,7 +795,18 @@
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target.classList.add('active');
+            
+            // Add active class to clicked button
+            if (buttonElement) {
+                buttonElement.classList.add('active');
+            } else {
+                // Find button by tab name if not provided
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    if (btn.textContent.toLowerCase().includes(tabName)) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
 
             // Load tab-specific data
             switch(tabName) {
