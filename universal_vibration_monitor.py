@@ -924,24 +924,25 @@ def sensor_detail(sensor_id):
 @app.route('/api/readings')
 def get_readings():
     """Get latest readings from all sensors"""
-    if monitor_instance:
+    if monitor_instance and monitor_instance.latest_readings:
         readings = {}
         for addr, reading in monitor_instance.latest_readings.items():
-            if reading.vibration_metrics:
-                readings[f'0x{addr:02X}'] = {
-                    'timestamp': reading.timestamp.isoformat(),
-                    'name': reading.sensor_config.name if reading.sensor_config else f'Sensor_{addr:02X}',
-                    'temperature_f': reading.temperature,
-                    'acceleration': {
-                        'x': reading.acceleration_x,
-                        'y': reading.acceleration_y,
-                        'z': reading.acceleration_z
-                    },
-                    'metrics': {
-                        'rms_acceleration': reading.vibration_metrics.rms_acceleration,
-                        'velocity_mms': reading.vibration_metrics.vibration_velocity_rms,
-                        'iso_zone': reading.vibration_metrics.iso_zone,
-                        'dominant_frequency': reading.vibration_metrics.dominant_frequency
+            # Always include the reading, even without full metrics
+            sensor_data = {
+                'timestamp': reading.timestamp.isoformat(),
+                'name': reading.sensor_config.name if reading.sensor_config else f'Sensor_{addr:02X}',
+                'temperature_f': reading.temperature,
+                'acceleration': {
+                    'x': reading.acceleration_x,
+                    'y': reading.acceleration_y,
+                    'z': reading.acceleration_z
+                },
+                'alert_level': reading.alert_level,
+                'metrics': {
+                    'rms_acceleration': 0.0,
+                    'velocity_mms': 0.0,
+                    'iso_zone': 'A',
+                    'dominant_frequency': 0.0
                     },
                     'alert_level': reading.alert_level
                 }
@@ -1008,13 +1009,39 @@ def scan_sensors():
         return jsonify({'error': 'Monitor not initialized'}), 400
     
     found_sensors = []
-    # Scan common addresses
-    for addr in range(0x50, 0x70):
-        if monitor_instance.test_sensor_connection(addr):
-            found_sensors.append({
-                'address': addr,
-                'configured': addr in [s.address for s in monitor_instance.config.sensors]
-            })
+    
+    # First, add all configured sensors
+    for sensor in monitor_instance.config.sensors:
+        found_sensors.append({
+            'address': sensor.address,
+            'configured': True,
+            'name': sensor.name,
+            'active': sensor.address in monitor_instance.latest_readings
+        })
+    
+    # If monitoring is running, we can't scan for new sensors
+    # But we can show which addresses have recent readings
+    if monitor_instance.running:
+        # Add any sensors we're getting data from that aren't configured
+        for addr in monitor_instance.latest_readings.keys():
+            if addr not in [s.address for s in monitor_instance.config.sensors]:
+                found_sensors.append({
+                    'address': addr,
+                    'configured': False,
+                    'name': f'Sensor_{addr:02X}',
+                    'active': True
+                })
+    else:
+        # If not running, we can actually scan
+        for addr in range(0x50, 0x70):
+            if addr not in [s.address for s in monitor_instance.config.sensors]:
+                if monitor_instance.test_sensor_connection(addr):
+                    found_sensors.append({
+                        'address': addr,
+                        'configured': False,
+                        'name': f'Sensor_{addr:02X}',
+                        'active': False
+                    })
     
     return jsonify(found_sensors)
 
@@ -1136,6 +1163,12 @@ def serve_web_interface():
                 <button onclick="scanSensors()" class="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors">
                     🔍 Scan for Sensors
                 </button>
+                <button onclick="startMonitoring()" class="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors">
+                    ▶️ Start Monitor
+                </button>
+                <button onclick="stopMonitoring()" class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                    ⏹️ Stop Monitor
+                </button>
             </div>
         </div>
 
@@ -1146,6 +1179,7 @@ def serve_web_interface():
                 
                 <div class="mb-6">
                     <h3 class="text-lg mb-3">Detected Sensors</h3>
+                    <p class="text-sm text-gray-600 mb-2">Note: Stop monitoring to scan for new sensors on other addresses</p>
                     <div id="detectedSensors" class="space-y-2">
                         <p class="text-gray-600">Scanning...</p>
                     </div>
@@ -1445,9 +1479,17 @@ def serve_web_interface():
                     sensorsDiv.innerHTML = '<p class="text-gray-600">No sensors found</p>';
                 } else {
                     sensorsDiv.innerHTML = sensors.map(sensor => `
-                        <div class="flex justify-between items-center p-2 bg-gray-100 rounded">
-                            <span>Address: 0x${sensor.address.toString(16).toUpperCase().padStart(2, '0')}</span>
-                            <span class="text-sm text-gray-600">${sensor.configured ? 'Configured' : 'New'}</span>
+                        <div class="flex justify-between items-center p-3 bg-gray-100 rounded">
+                            <div>
+                                <span class="font-medium">${sensor.name || 'Unknown'}</span>
+                                <span class="text-sm text-gray-600 ml-2">0x${sensor.address.toString(16).toUpperCase().padStart(2, '0')}</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                ${sensor.active ? '<span class="w-2 h-2 bg-green-500 rounded-full"></span>' : ''}
+                                <span class="text-sm ${sensor.configured ? 'text-blue-600' : 'text-orange-600'}">
+                                    ${sensor.configured ? 'Configured' : 'New Device'}
+                                </span>
+                            </div>
                         </div>
                     `).join('');
                 }
@@ -1484,6 +1526,40 @@ def serve_web_interface():
                 }
             } catch (error) {
                 alert('Error programming address');
+            }
+        }
+
+        // Monitoring control functions
+        async function startMonitoring() {
+            try {
+                const response = await fetch(`${API_BASE}/control/start`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('Monitoring started');
+                    setTimeout(() => {
+                        loadSystemStatus();
+                        loadSensorData();
+                    }, 1000);
+                } else {
+                    alert('Failed to start: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error starting monitoring');
+            }
+        }
+
+        async function stopMonitoring() {
+            try {
+                const response = await fetch(`${API_BASE}/control/stop`, { method: 'POST' });
+                const result = await response.json();
+                if (result.success) {
+                    alert('Monitoring stopped. You can now scan for new sensors.');
+                    loadSystemStatus();
+                } else {
+                    alert('Failed to stop: ' + result.error);
+                }
+            } catch (error) {
+                alert('Error stopping monitoring');
             }
         }
 
