@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AutomataNexus Vibration Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -108,6 +109,43 @@
         }
         .status.online { background: #d4edda; color: #155724; }
         .status.offline { background: #f8d7da; color: #721c24; }
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 1rem;
+            height: 400px;
+        }
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 0.5rem;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            z-index: 1000;
+            margin-bottom: 5px;
+        }
+        .tooltip:hover::before {
+            content: "";
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #333;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
@@ -137,6 +175,10 @@
                     <p>Loading sensor data...</p>
                 </div>
             </div>
+            <div class="chart-container">
+                <h3 style="margin-bottom: 1rem;">Vibration Trends</h3>
+                <canvas id="trendChart"></canvas>
+            </div>
         </div>
 
         <!-- Configuration Tab -->
@@ -161,6 +203,12 @@
         // Simple and working JavaScript
         const API_BASE = 'http://localhost:5000/api';
         let updateInterval;
+        let trendChart;
+        let chartData = {
+            labels: [],
+            datasets: []
+        };
+        const MAX_DATA_POINTS = 30;
 
         function showTab(tabName, btn) {
             // Hide all sections
@@ -205,23 +253,26 @@
                             <strong>${sensor.temperature_f.toFixed(1)}°F</strong>
                         </div>
                         <div class="metric">
-                            <span>Velocity</span>
+                            <span class="tooltip" data-tooltip="Vibration velocity in mm/s - Key indicator of machine health">Velocity</span>
                             <strong>${sensor.velocity_mms.toFixed(2)} mm/s</strong>
                         </div>
                         <div class="metric">
-                            <span>RMS Acceleration</span>
+                            <span class="tooltip" data-tooltip="Root Mean Square acceleration in g-force - Measures vibration intensity">RMS Acceleration</span>
                             <strong>${sensor.rms_acceleration.toFixed(4)}g</strong>
                         </div>
                         <div class="metric">
-                            <span>ISO Zone</span>
+                            <span class="tooltip" data-tooltip="ISO 10816-3 Zone: A=Good, B=Acceptable, C=Unsatisfactory, D=Unacceptable">ISO Zone</span>
                             <strong style="color: ${sensor.iso_zone === 'A' ? '#22c55e' : sensor.iso_zone === 'B' ? '#eab308' : sensor.iso_zone === 'C' ? '#f97316' : '#ef4444'}">${sensor.iso_zone}</strong>
                         </div>
                         <div class="metric">
-                            <span>Status</span>
+                            <span class="tooltip" data-tooltip="Overall equipment status based on ISO standards">Status</span>
                             <strong>${sensor.alert_level}</strong>
                         </div>
                     </div>
                 `).join('');
+                
+                // Update trend chart
+                updateTrendChart(data);
             } catch (error) {
                 document.getElementById('connection-status').className = 'status offline';
                 document.getElementById('connection-status').textContent = 'Offline';
@@ -407,6 +458,96 @@
             }
         }
 
+        function initTrendChart() {
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(ctx, {
+                type: 'line',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: {
+                        duration: 0
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Velocity (mm/s)'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateTrendChart(data) {
+            if (!trendChart) return;
+            
+            const time = new Date().toLocaleTimeString();
+            
+            // Add time label
+            chartData.labels.push(time);
+            if (chartData.labels.length > MAX_DATA_POINTS) {
+                chartData.labels.shift();
+            }
+            
+            // Update or create datasets for each sensor
+            Object.entries(data).forEach(([name, sensor]) => {
+                let dataset = chartData.datasets.find(ds => ds.label === name);
+                
+                if (!dataset) {
+                    // Create new dataset
+                    const colors = ['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444', '#14b8a6'];
+                    const colorIndex = chartData.datasets.length % colors.length;
+                    
+                    dataset = {
+                        label: name,
+                        data: [],
+                        borderColor: colors[colorIndex],
+                        backgroundColor: colors[colorIndex] + '20',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointRadius: 3,
+                        pointHoverRadius: 5
+                    };
+                    chartData.datasets.push(dataset);
+                }
+                
+                // Add data point
+                dataset.data.push(sensor.velocity_mms);
+                if (dataset.data.length > MAX_DATA_POINTS) {
+                    dataset.data.shift();
+                }
+            });
+            
+            // Remove datasets for sensors that no longer exist
+            chartData.datasets = chartData.datasets.filter(ds => 
+                Object.keys(data).includes(ds.label)
+            );
+            
+            trendChart.update('none');
+        }
+
         function startAutoUpdate() {
             loadSensorData();
             updateInterval = setInterval(loadSensorData, 5000);
@@ -417,6 +558,11 @@
                 clearInterval(updateInterval);
             }
         }
+
+        // Initialize chart when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            initTrendChart();
+        });
 
         // Start loading data
         startAutoUpdate();
