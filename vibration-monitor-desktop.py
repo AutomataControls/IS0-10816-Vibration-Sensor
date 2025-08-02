@@ -24,8 +24,11 @@ def open_desktop_ui():
     """Open the UI in the default browser or Tauri if available"""
     time.sleep(2)  # Wait for Flask to start
     
+    # Get the directory of this script
+    script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    
     # Check if Tauri app exists
-    tauri_path = os.path.join(os.path.dirname(__file__), 
+    tauri_path = os.path.join(script_dir, 
                              "IS0-10816-Vibration-Monitor-UI", 
                              "src-tauri", "target", "release", 
                              "IS0-10816-Vibration-Monitor-UI.exe")
