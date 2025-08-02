@@ -218,6 +218,214 @@ class MultiPortVibrationMonitor:
         print("Monitoring stopped")
 
 # Flask API Routes
+@app.route('/')
+def serve_web_interface():
+    """Serve the web interface"""
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Sensor Vibration Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .font-ultralight { font-weight: 200; }
+        body {
+            background: linear-gradient(135deg, #f0fffe 0%, #e6fffa 25%, #fef7ed 50%, #eff6ff 75%, #f0f9ff 100%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+        }
+    </style>
+</head>
+<body class="font-ultralight">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="glass-card p-6 mb-8">
+            <h1 class="text-3xl font-ultralight text-gray-800">Multi-Sensor Vibration Monitor</h1>
+            <p class="text-gray-600">Monitoring 3 WTVB01-485 Sensors</p>
+        </div>
+
+        <!-- Sensor Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" id="sensorGrid">
+            <div class="glass-card p-6">
+                <p class="text-gray-600">Loading sensors...</p>
+            </div>
+        </div>
+
+        <!-- Combined Chart -->
+        <div class="glass-card p-6">
+            <h3 class="text-xl mb-4">Vibration Trends</h3>
+            <canvas id="vibrationChart" height="100"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        let chart;
+
+        // Initialize chart
+        function initChart() {
+            const ctx = document.getElementById('vibrationChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Acceleration (g)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load sensor data
+        async function loadSensorData() {
+            try {
+                const response = await fetch(`${API_BASE}/readings`);
+                const data = await response.json();
+                displaySensors(data);
+                updateChart(data);
+            } catch (error) {
+                console.error('Failed to load data:', error);
+            }
+        }
+
+        // Display sensors
+        function displaySensors(readings) {
+            const grid = document.getElementById('sensorGrid');
+            
+            if (Object.keys(readings).length === 0) {
+                grid.innerHTML = '<div class="glass-card p-6 col-span-full"><p class="text-gray-600 text-center">No sensor data available</p></div>';
+                return;
+            }
+            
+            grid.innerHTML = '';
+
+            Object.entries(readings).forEach(([id, reading]) => {
+                const totalAccel = Math.sqrt(
+                    reading.acceleration.x ** 2 + 
+                    reading.acceleration.y ** 2 + 
+                    reading.acceleration.z ** 2
+                );
+                
+                const card = document.createElement('div');
+                card.className = `glass-card p-6`;
+                
+                const alertColors = {
+                    'NORMAL': 'green',
+                    'WARNING': 'yellow',
+                    'CRITICAL': 'red'
+                };
+                const alertColor = alertColors[reading.alert_level] || 'gray';
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl">${id}</h3>
+                        <span class="px-3 py-1 rounded-full text-xs font-medium bg-${alertColor}-500 text-white">
+                            ${reading.alert_level}
+                        </span>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Port:</span>
+                            <span class="font-medium">${reading.port}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Temperature:</span>
+                            <span class="font-medium">${reading.temperature_f.toFixed(1)}°F</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Total Accel:</span>
+                            <span class="font-medium">${totalAccel.toFixed(3)}g</span>
+                        </div>
+                        <div class="mt-3 pt-3 border-t border-gray-200">
+                            <div class="text-sm text-gray-600">
+                                X: ${reading.acceleration.x.toFixed(3)}g<br>
+                                Y: ${reading.acceleration.y.toFixed(3)}g<br>
+                                Z: ${reading.acceleration.z.toFixed(3)}g
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        // Update chart
+        function updateChart(readings) {
+            const time = new Date().toLocaleTimeString();
+            
+            // Add time label
+            if (chart.data.labels.length > 20) {
+                chart.data.labels.shift();
+            }
+            chart.data.labels.push(time);
+            
+            // Update or create datasets for each sensor
+            Object.entries(readings).forEach(([id, reading], index) => {
+                const totalAccel = Math.sqrt(
+                    reading.acceleration.x ** 2 + 
+                    reading.acceleration.y ** 2 + 
+                    reading.acceleration.z ** 2
+                );
+                
+                // Find or create dataset
+                let dataset = chart.data.datasets.find(ds => ds.label === id);
+                if (!dataset) {
+                    const colors = ['#f97316', '#0ea5e9', '#10b981'];
+                    dataset = {
+                        label: id,
+                        data: [],
+                        borderColor: colors[index % colors.length],
+                        backgroundColor: colors[index % colors.length] + '20',
+                        tension: 0.4
+                    };
+                    chart.data.datasets.push(dataset);
+                }
+                
+                // Add data point
+                dataset.data.push(totalAccel);
+                if (dataset.data.length > 20) {
+                    dataset.data.shift();
+                }
+            });
+            
+            chart.update('none');
+        }
+
+        // Initialize
+        initChart();
+        loadSensorData();
+        
+        // Auto-refresh
+        setInterval(loadSensorData, 1000);
+    </script>
+</body>
+</html>
+    """
+
 @app.route('/api/status')
 def get_status():
     """Get system status"""
