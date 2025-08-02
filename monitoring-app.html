@@ -241,31 +241,42 @@
                     return;
                 }
                 
-                // Show configuration forms for unconfigured sensors
-                if (!status.configured) {
-                    container.innerHTML = '<div style="color: #666;"><p>Please use the Flask web interface at http://localhost:5000 to configure sensors.</p></div>';
-                    return;
-                }
+                // Show all sensors with their configuration status
+                container.innerHTML = status.sensors.map(sensor => {
+                    if (sensor.configured) {
+                        return `
+                            <div class="sensor-card" style="border-left: 4px solid #22c55e;">
+                                <h3>${sensor.name}</h3>
+                                <p style="color: #666; margin-bottom: 0.5rem;">${sensor.port} ✓ Configured</p>
+                                <div class="metric">
+                                    <span>Type</span>
+                                    <span>${sensor.type.replace(/_/g, ' ')}</span>
+                                </div>
+                                <div class="metric">
+                                    <span>Power</span>
+                                    <span>${sensor.hp} HP</span>
+                                </div>
+                                <div class="metric">
+                                    <span>Voltage</span>
+                                    <span>${sensor.voltage}V ${sensor.phase}φ</span>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        return `
+                            <div class="sensor-card" style="border-left: 4px solid #ef4444;">
+                                <h3>${sensor.name}</h3>
+                                <p style="color: #dc3545; margin-bottom: 0.5rem;">${sensor.port} - Not Configured</p>
+                                <p style="color: #666;">Click "Scan for USB Ports" to configure this sensor.</p>
+                            </div>
+                        `;
+                    }
+                }).join('');
                 
-                // Show configured sensors
-                container.innerHTML = status.sensors.filter(s => s.configured).map(sensor => `
-                    <div class="sensor-card">
-                        <h3>${sensor.name}</h3>
-                        <p style="color: #666; margin-bottom: 0.5rem;">${sensor.port}</p>
-                        <div class="metric">
-                            <span>Type</span>
-                            <span>${sensor.type.replace(/_/g, ' ')}</span>
-                        </div>
-                        <div class="metric">
-                            <span>Power</span>
-                            <span>${sensor.hp} HP</span>
-                        </div>
-                        <div class="metric">
-                            <span>Voltage</span>
-                            <span>${sensor.voltage}V ${sensor.phase}φ</span>
-                        </div>
-                    </div>
-                `).join('');
+                // If not all configured, show a message
+                if (!status.configured) {
+                    container.innerHTML = '<div style="background: #fef3c7; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;"><p style="color: #92400e;">⚠️ Some sensors are not configured. Click "Scan for USB Ports" below to configure them.</p></div>' + container.innerHTML;
+                }
             } catch (error) {
                 document.getElementById('config-list').innerHTML = '<div style="color: #dc3545;"><p>Error loading configuration</p></div>';
             }
@@ -282,51 +293,61 @@
                 }
                 
                 const container = document.getElementById('config-list');
-                container.innerHTML = status.sensors.map(sensor => `
-                    <div class="sensor-card">
-                        <h3>${sensor.port}</h3>
-                        <form onsubmit="saveConfig('${sensor.port}', event)">
-                            <div class="form-group">
-                                <label>Equipment Name</label>
-                                <input type="text" name="equipment_name" required placeholder="e.g., Cooling_Tower_1">
-                            </div>
-                            <div class="form-group">
-                                <label>Equipment Type</label>
-                                <select name="equipment_type" required>
-                                    <option value="cooling_tower_motor">Cooling Tower Motor</option>
-                                    <option value="centrifugal_pump">Centrifugal Pump</option>
-                                    <option value="reciprocating_compressor">Reciprocating Compressor</option>
-                                    <option value="screw_compressor">Screw Compressor</option>
-                                    <option value="scroll_compressor">Scroll Compressor</option>
-                                    <option value="circulation_pump">Circulation Pump</option>
-                                    <option value="fan_motor">Fan Motor</option>
-                                    <option value="general_motor">General Purpose Motor</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>HP</label>
-                                <input type="number" name="hp" required min="3" max="50" value="50">
-                            </div>
-                            <div class="form-group">
-                                <label>Voltage</label>
-                                <select name="voltage" required>
-                                    <option value="208">208V</option>
-                                    <option value="230">230V</option>
-                                    <option value="460">460V</option>
-                                    <option value="480" selected>480V</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Phase</label>
-                                <select name="phase" required>
-                                    <option value="1">Single Phase</option>
-                                    <option value="3" selected>Three Phase</option>
-                                </select>
-                            </div>
-                            <button type="submit" class="btn">Save Configuration</button>
-                        </form>
-                    </div>
-                `).join('');
+                container.innerHTML = status.sensors.map(sensor => {
+                    // Pre-fill values if sensor is already configured
+                    const name = sensor.configured ? sensor.name : '';
+                    const type = sensor.configured ? sensor.type : 'general_motor';
+                    const hp = sensor.configured ? sensor.hp : 50;
+                    const voltage = sensor.configured ? sensor.voltage : 480;
+                    const phase = sensor.configured ? sensor.phase : 3;
+                    
+                    return `
+                        <div class="sensor-card">
+                            <h3>${sensor.port} ${sensor.configured ? '✓' : ''}</h3>
+                            <form onsubmit="saveConfig('${sensor.port}', event)">
+                                <div class="form-group">
+                                    <label>Equipment Name</label>
+                                    <input type="text" name="equipment_name" required 
+                                           placeholder="e.g., Cooling_Tower_1" value="${name}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Equipment Type</label>
+                                    <select name="equipment_type" required>
+                                        <option value="cooling_tower_motor" ${type === 'cooling_tower_motor' ? 'selected' : ''}>Cooling Tower Motor</option>
+                                        <option value="centrifugal_pump" ${type === 'centrifugal_pump' ? 'selected' : ''}>Centrifugal Pump</option>
+                                        <option value="reciprocating_compressor" ${type === 'reciprocating_compressor' ? 'selected' : ''}>Reciprocating Compressor</option>
+                                        <option value="screw_compressor" ${type === 'screw_compressor' ? 'selected' : ''}>Screw Compressor</option>
+                                        <option value="scroll_compressor" ${type === 'scroll_compressor' ? 'selected' : ''}>Scroll Compressor</option>
+                                        <option value="circulation_pump" ${type === 'circulation_pump' ? 'selected' : ''}>Circulation Pump</option>
+                                        <option value="fan_motor" ${type === 'fan_motor' ? 'selected' : ''}>Fan Motor</option>
+                                        <option value="general_motor" ${type === 'general_motor' ? 'selected' : ''}>General Purpose Motor</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>HP</label>
+                                    <input type="number" name="hp" required min="3" max="50" value="${hp}">
+                                </div>
+                                <div class="form-group">
+                                    <label>Voltage</label>
+                                    <select name="voltage" required>
+                                        <option value="208" ${voltage == 208 ? 'selected' : ''}>208V</option>
+                                        <option value="230" ${voltage == 230 ? 'selected' : ''}>230V</option>
+                                        <option value="460" ${voltage == 460 ? 'selected' : ''}>460V</option>
+                                        <option value="480" ${voltage == 480 ? 'selected' : ''}>480V</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Phase</label>
+                                    <select name="phase" required>
+                                        <option value="1" ${phase == 1 ? 'selected' : ''}>Single Phase</option>
+                                        <option value="3" ${phase == 3 ? 'selected' : ''}>Three Phase</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn">${sensor.configured ? 'Update' : 'Save'} Configuration</button>
+                            </form>
+                        </div>
+                    `;
+                }).join('');
             } catch (error) {
                 alert('Error scanning ports: ' + error.message);
             }

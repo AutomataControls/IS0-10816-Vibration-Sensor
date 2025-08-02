@@ -923,16 +923,42 @@ def get_status():
             'total_readings': len(monitor_instance.latest_readings),
             'start_time': datetime.now().isoformat()
         })
-    return jsonify({'error': 'Monitor not initialized'}), 503
+    
+    # Even if monitor not fully initialized, try to detect sensors
+    ports = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
+    detected_sensors = []
+    
+    for port in ports:
+        if os.path.exists(port):
+            detected_sensors.append({
+                'port': port,
+                'name': port.split('/')[-1].upper(),
+                'configured': False
+            })
+    
+    return jsonify({
+        'running': False,
+        'configured': False,
+        'sensors': detected_sensors,
+        'active_sensors': 0,
+        'total_readings': 0,
+        'start_time': datetime.now().isoformat()
+    })
 
 @app.route('/api/configure', methods=['POST'])
 def configure_equipment():
     """Configure equipment for each sensor"""
-    if not monitor_instance:
-        return jsonify({'error': 'Monitor not initialized'}), 503
+    global monitor_instance
     
     data = request.json
     port = data.get('port')
+    
+    # If monitor not initialized, initialize it now
+    if not monitor_instance:
+        ports = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
+        monitor_instance = MultiPortVibrationMonitor(ports)
+        if not monitor_instance.connect_sensors():
+            return jsonify({'error': 'Failed to connect to sensors'}), 500
     
     if port not in monitor_instance.serial_connections:
         return jsonify({'error': 'Invalid port'}), 400
@@ -968,8 +994,14 @@ def get_equipment_types():
 @app.route('/api/monitoring/start', methods=['POST'])
 def start_monitoring():
     """Start monitoring if configured"""
+    global monitor_instance
+    
+    # If monitor not initialized, initialize it now
     if not monitor_instance:
-        return jsonify({'error': 'Monitor not initialized'}), 503
+        ports = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
+        monitor_instance = MultiPortVibrationMonitor(ports)
+        if not monitor_instance.connect_sensors():
+            return jsonify({'error': 'Failed to connect to sensors'}), 500
     
     if not monitor_instance.configured:
         return jsonify({'error': 'Equipment not configured'}), 400
