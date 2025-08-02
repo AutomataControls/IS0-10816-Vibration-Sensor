@@ -1032,8 +1032,8 @@ def main():
     print("Real-time Analysis | Web Dashboard | CSV Logging")
     print("=" * 90)
     
-    # Define the ports - keeping all 4
-    ports = ['/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
+    # Define the ports to check - it will skip any that don't exist
+    ports = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
     
     # Create monitor
     monitor_instance = MultiPortVibrationMonitor(ports)
