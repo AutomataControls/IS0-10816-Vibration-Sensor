@@ -249,7 +249,7 @@ def serve_web_interface():
     <style>
         .font-ultralight { font-weight: 200; }
         body {
-            background: linear-gradient(135deg, #f0fffe 0%, #e6fffa 25%, #fef7ed 50%, #eff6ff 75%, #f0f9ff 100%);
+            background: linear-gradient(135deg, #f0fffc 0%, #e6fff5 20%, #f5fffa 40%, #fff5eb 60%, #ffe8d6 80%, #fff0e6 100%);
             min-height: 100vh;
         }
         .glass-card {
