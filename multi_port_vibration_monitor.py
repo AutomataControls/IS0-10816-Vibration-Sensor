@@ -10,12 +10,14 @@ import struct
 import threading
 import csv
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import sqlite3
+import json
 
 # Flask app
 app = Flask(__name__)
@@ -164,9 +166,200 @@ class MultiPortVibrationMonitor:
             'RMS_Accel', 'Velocity_mms', 'ISO_Zone', 'Temperature', 'AlertLevel'
         ])
         
+        # Initialize database
+        self.init_database()
+        
         print(f"\nConnected to {len(self.serial_connections)} sensors")
         print(f"CSV logging to: {self.csv_filename}")
+        print(f"Database: vibration_metrics.db")
         return True
+    
+    def init_database(self):
+        """Initialize SQLite database for metrics storage"""
+        self.db_path = "vibration_metrics.db"
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Create metrics table if not exists
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sensor_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                sensor_id TEXT NOT NULL,
+                equipment_name TEXT,
+                equipment_type TEXT,
+                hp REAL,
+                temperature_f REAL,
+                accel_x REAL,
+                accel_y REAL,
+                accel_z REAL,
+                rms_acceleration REAL,
+                velocity_mms REAL,
+                iso_zone TEXT,
+                alert_level TEXT
+            )
+        ''')
+        
+        # Create indexes
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON sensor_metrics(timestamp)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_sensor_id ON sensor_metrics(sensor_id)')
+        
+        # Create hourly aggregates table for efficient querying
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS hourly_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                hour_timestamp DATETIME NOT NULL,
+                sensor_id TEXT NOT NULL,
+                equipment_name TEXT,
+                avg_temperature REAL,
+                avg_rms_acceleration REAL,
+                avg_velocity REAL,
+                max_rms_acceleration REAL,
+                max_velocity REAL,
+                min_rms_acceleration REAL,
+                min_velocity REAL,
+                zone_a_count INTEGER DEFAULT 0,
+                zone_b_count INTEGER DEFAULT 0,
+                zone_c_count INTEGER DEFAULT 0,
+                zone_d_count INTEGER DEFAULT 0,
+                sample_count INTEGER,
+                UNIQUE(hour_timestamp, sensor_id)
+            )
+        ''')
+        
+        # Clean up old data (older than 7 days)
+        cursor.execute('''
+            DELETE FROM sensor_metrics 
+            WHERE timestamp < datetime('now', '-7 days')
+        ''')
+        
+        cursor.execute('''
+            DELETE FROM hourly_metrics 
+            WHERE hour_timestamp < datetime('now', '-7 days')
+        ''')
+        
+        conn.commit()
+        conn.close()
+        
+        # Schedule daily cleanup
+        self.schedule_cleanup()
+    
+    def schedule_cleanup(self):
+        """Schedule daily database cleanup"""
+        def cleanup():
+            while self.running:
+                time.sleep(86400)  # Wait 24 hours
+                try:
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM sensor_metrics WHERE timestamp < datetime('now', '-7 days')")
+                    cursor.execute("DELETE FROM hourly_metrics WHERE hour_timestamp < datetime('now', '-7 days')")
+                    deleted = cursor.rowcount
+                    conn.commit()
+                    conn.close()
+                    print(f"Database cleanup: Removed {deleted} old records")
+                except Exception as e:
+                    print(f"Database cleanup error: {e}")
+        
+        cleanup_thread = threading.Thread(target=cleanup, daemon=True)
+        cleanup_thread.start()
+    
+    def save_to_database(self, reading: SensorReading, equipment_config: Optional[EquipmentConfig] = None):
+        """Save sensor reading to database"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO sensor_metrics (
+                    timestamp, sensor_id, equipment_name, equipment_type, hp,
+                    temperature_f, accel_x, accel_y, accel_z,
+                    rms_acceleration, velocity_mms, iso_zone, alert_level
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                reading.timestamp.isoformat(),
+                reading.sensor_id,
+                equipment_config.equipment_name if equipment_config else reading.sensor_id,
+                equipment_config.equipment_type if equipment_config else 'unknown',
+                equipment_config.hp if equipment_config else 0,
+                reading.temperature,
+                reading.acceleration_x,
+                reading.acceleration_y,
+                reading.acceleration_z,
+                reading.rms_acceleration,
+                reading.velocity_mms,
+                reading.iso_zone,
+                reading.alert_level
+            ))
+            
+            # Update hourly aggregates
+            hour_timestamp = reading.timestamp.replace(minute=0, second=0, microsecond=0)
+            
+            # Check if hourly record exists
+            cursor.execute('''
+                SELECT id FROM hourly_metrics 
+                WHERE hour_timestamp = ? AND sensor_id = ?
+            ''', (hour_timestamp.isoformat(), reading.sensor_id))
+            
+            if cursor.fetchone():
+                # Update existing record
+                zone_col = f"zone_{reading.iso_zone.lower()}_count"
+                cursor.execute(f'''
+                    UPDATE hourly_metrics SET
+                        avg_temperature = (avg_temperature * sample_count + ?) / (sample_count + 1),
+                        avg_rms_acceleration = (avg_rms_acceleration * sample_count + ?) / (sample_count + 1),
+                        avg_velocity = (avg_velocity * sample_count + ?) / (sample_count + 1),
+                        max_rms_acceleration = MAX(max_rms_acceleration, ?),
+                        max_velocity = MAX(max_velocity, ?),
+                        min_rms_acceleration = MIN(min_rms_acceleration, ?),
+                        min_velocity = MIN(min_velocity, ?),
+                        {zone_col} = {zone_col} + 1,
+                        sample_count = sample_count + 1
+                    WHERE hour_timestamp = ? AND sensor_id = ?
+                ''', (
+                    reading.temperature,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    hour_timestamp.isoformat(),
+                    reading.sensor_id
+                ))
+            else:
+                # Create new hourly record
+                cursor.execute('''
+                    INSERT INTO hourly_metrics (
+                        hour_timestamp, sensor_id, equipment_name,
+                        avg_temperature, avg_rms_acceleration, avg_velocity,
+                        max_rms_acceleration, max_velocity,
+                        min_rms_acceleration, min_velocity,
+                        zone_a_count, zone_b_count, zone_c_count, zone_d_count,
+                        sample_count
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    hour_timestamp.isoformat(),
+                    reading.sensor_id,
+                    equipment_config.equipment_name if equipment_config else reading.sensor_id,
+                    reading.temperature,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    reading.rms_acceleration,
+                    reading.velocity_mms,
+                    1 if reading.iso_zone == 'A' else 0,
+                    1 if reading.iso_zone == 'B' else 0,
+                    1 if reading.iso_zone == 'C' else 0,
+                    1 if reading.iso_zone == 'D' else 0,
+                    1
+                ))
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Database save error: {e}")
     
     def read_sensor(self, port: str, ser: serial.Serial) -> Optional[SensorReading]:
         """Read data from a single sensor"""
@@ -374,6 +567,10 @@ class MultiPortVibrationMonitor:
                         reading.temperature,
                         reading.alert_level
                     ])
+                    
+                    # Save to database
+                    equipment_config = self.equipment_configs.get(port)
+                    self.save_to_database(reading, equipment_config)
             
             if readings:
                 print("-" * 80)
@@ -1049,6 +1246,244 @@ def get_readings():
             }
         return jsonify(readings)
     return jsonify({})
+
+@app.route('/api/metrics/history')
+def get_metrics_history():
+    """Get historical metrics from database
+    Query params:
+    - sensor_id: specific sensor ID (optional)
+    - hours: number of hours to retrieve (default 24, max 168)
+    - interval: 'raw' or 'hourly' (default 'hourly')
+    """
+    try:
+        sensor_id = request.args.get('sensor_id')
+        hours = min(int(request.args.get('hours', 24)), 168)  # Max 7 days
+        interval = request.args.get('interval', 'hourly')
+        
+        conn = sqlite3.connect('vibration_metrics.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if interval == 'hourly':
+            # Get hourly aggregates
+            query = '''
+                SELECT * FROM hourly_metrics 
+                WHERE hour_timestamp > datetime('now', '-{} hours')
+                {}
+                ORDER BY hour_timestamp, sensor_id
+            '''.format(hours, 'AND sensor_id = ?' if sensor_id else '')
+            
+            if sensor_id:
+                cursor.execute(query, (sensor_id,))
+            else:
+                cursor.execute(query)
+                
+            rows = cursor.fetchall()
+            
+            result = []
+            for row in rows:
+                result.append({
+                    'timestamp': row['hour_timestamp'],
+                    'sensor_id': row['sensor_id'],
+                    'equipment_name': row['equipment_name'],
+                    'avg_temperature': row['avg_temperature'],
+                    'avg_rms_acceleration': row['avg_rms_acceleration'],
+                    'avg_velocity': row['avg_velocity'],
+                    'max_rms_acceleration': row['max_rms_acceleration'],
+                    'max_velocity': row['max_velocity'],
+                    'min_rms_acceleration': row['min_rms_acceleration'],
+                    'min_velocity': row['min_velocity'],
+                    'zone_distribution': {
+                        'A': row['zone_a_count'],
+                        'B': row['zone_b_count'],
+                        'C': row['zone_c_count'],
+                        'D': row['zone_d_count']
+                    },
+                    'sample_count': row['sample_count']
+                })
+        else:
+            # Get raw data
+            query = '''
+                SELECT * FROM sensor_metrics 
+                WHERE timestamp > datetime('now', '-{} hours')
+                {}
+                ORDER BY timestamp DESC
+                LIMIT 1000
+            '''.format(hours, 'AND sensor_id = ?' if sensor_id else '')
+            
+            if sensor_id:
+                cursor.execute(query, (sensor_id,))
+            else:
+                cursor.execute(query)
+                
+            rows = cursor.fetchall()
+            
+            result = []
+            for row in rows:
+                result.append({
+                    'timestamp': row['timestamp'],
+                    'sensor_id': row['sensor_id'],
+                    'equipment_name': row['equipment_name'],
+                    'equipment_type': row['equipment_type'],
+                    'temperature_f': row['temperature_f'],
+                    'rms_acceleration': row['rms_acceleration'],
+                    'velocity_mms': row['velocity_mms'],
+                    'iso_zone': row['iso_zone'],
+                    'alert_level': row['alert_level']
+                })
+        
+        conn.close()
+        return jsonify({
+            'data': result,
+            'query': {
+                'sensor_id': sensor_id,
+                'hours': hours,
+                'interval': interval,
+                'count': len(result)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/metrics/summary')
+def get_metrics_summary():
+    """Get summary statistics for all sensors
+    Query params:
+    - hours: number of hours to summarize (default 24)
+    """
+    try:
+        hours = min(int(request.args.get('hours', 24)), 168)
+        
+        conn = sqlite3.connect('vibration_metrics.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        # Get summary for each sensor
+        query = '''
+            SELECT 
+                sensor_id,
+                equipment_name,
+                COUNT(*) as total_readings,
+                AVG(temperature_f) as avg_temperature,
+                MIN(temperature_f) as min_temperature,
+                MAX(temperature_f) as max_temperature,
+                AVG(rms_acceleration) as avg_rms_acceleration,
+                MIN(rms_acceleration) as min_rms_acceleration,
+                MAX(rms_acceleration) as max_rms_acceleration,
+                AVG(velocity_mms) as avg_velocity,
+                MIN(velocity_mms) as min_velocity,
+                MAX(velocity_mms) as max_velocity,
+                SUM(CASE WHEN iso_zone = 'A' THEN 1 ELSE 0 END) as zone_a_count,
+                SUM(CASE WHEN iso_zone = 'B' THEN 1 ELSE 0 END) as zone_b_count,
+                SUM(CASE WHEN iso_zone = 'C' THEN 1 ELSE 0 END) as zone_c_count,
+                SUM(CASE WHEN iso_zone = 'D' THEN 1 ELSE 0 END) as zone_d_count,
+                MAX(timestamp) as last_reading
+            FROM sensor_metrics
+            WHERE timestamp > datetime('now', '-{} hours')
+            GROUP BY sensor_id
+        '''.format(hours)
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        result = {}
+        for row in rows:
+            total = row['total_readings']
+            result[row['sensor_id']] = {
+                'equipment_name': row['equipment_name'],
+                'total_readings': total,
+                'last_reading': row['last_reading'],
+                'temperature': {
+                    'avg': round(row['avg_temperature'], 1),
+                    'min': round(row['min_temperature'], 1),
+                    'max': round(row['max_temperature'], 1)
+                },
+                'rms_acceleration': {
+                    'avg': round(row['avg_rms_acceleration'], 4),
+                    'min': round(row['min_rms_acceleration'], 4),
+                    'max': round(row['max_rms_acceleration'], 4)
+                },
+                'velocity': {
+                    'avg': round(row['avg_velocity'], 2),
+                    'min': round(row['min_velocity'], 2),
+                    'max': round(row['max_velocity'], 2)
+                },
+                'zone_distribution': {
+                    'A': row['zone_a_count'],
+                    'B': row['zone_b_count'],
+                    'C': row['zone_c_count'],
+                    'D': row['zone_d_count'],
+                    'A_percent': round((row['zone_a_count'] / total) * 100, 1) if total > 0 else 0,
+                    'B_percent': round((row['zone_b_count'] / total) * 100, 1) if total > 0 else 0,
+                    'C_percent': round((row['zone_c_count'] / total) * 100, 1) if total > 0 else 0,
+                    'D_percent': round((row['zone_d_count'] / total) * 100, 1) if total > 0 else 0
+                }
+            }
+        
+        conn.close()
+        return jsonify({
+            'summary': result,
+            'query': {
+                'hours': hours,
+                'sensor_count': len(result)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/metrics/alerts')
+def get_alerts():
+    """Get recent alerts (Zone C and D events)
+    Query params:
+    - hours: number of hours to check (default 24)
+    - limit: max number of alerts (default 100)
+    """
+    try:
+        hours = min(int(request.args.get('hours', 24)), 168)
+        limit = min(int(request.args.get('limit', 100)), 500)
+        
+        conn = sqlite3.connect('vibration_metrics.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        query = '''
+            SELECT * FROM sensor_metrics
+            WHERE timestamp > datetime('now', '-{} hours')
+            AND iso_zone IN ('C', 'D')
+            ORDER BY timestamp DESC
+            LIMIT {}
+        '''.format(hours, limit)
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        alerts = []
+        for row in rows:
+            alerts.append({
+                'timestamp': row['timestamp'],
+                'sensor_id': row['sensor_id'],
+                'equipment_name': row['equipment_name'],
+                'iso_zone': row['iso_zone'],
+                'alert_level': row['alert_level'],
+                'velocity_mms': row['velocity_mms'],
+                'rms_acceleration': row['rms_acceleration'],
+                'temperature_f': row['temperature_f']
+            })
+        
+        conn.close()
+        return jsonify({
+            'alerts': alerts,
+            'count': len(alerts),
+            'query': {
+                'hours': hours,
+                'limit': limit
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 def main():
     global monitor_instance

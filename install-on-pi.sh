@@ -24,7 +24,8 @@ sudo apt install -y \
     curl \
     nodejs \
     npm \
-    chromium-browser
+    chromium-browser \
+    sqlite3
 
 # Install Python packages globally (for system-wide access)
 echo "3. Installing Python dependencies..."
