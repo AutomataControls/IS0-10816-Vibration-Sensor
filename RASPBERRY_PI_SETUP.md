@@ -34,13 +34,22 @@ This guide will help you install the vibration monitoring system on a fresh Rasp
 2. Download and run the installation script:
 
 ```bash
-# Download the installation script
-wget https://raw.githubusercontent.com/AutomataControls/IS0-10816-Vibration-Sensor/main/install-on-pi.sh
+# Download the master installer (auto-detects GUI or CLI)
+wget https://raw.githubusercontent.com/AutomataControls/IS0-10816-Vibration-Sensor/main/install.sh
 
 # Make it executable
-chmod +x install-on-pi.sh
+chmod +x install.sh
 
-# Run the installer
+# Run the installer (will use GUI if available)
+./install.sh
+```
+
+**Note:** If you're using Raspberry Pi Desktop, you'll get a professional GUI installer with progress bar. If using SSH or no display, it will automatically use the command-line installer.
+
+For CLI-only installation:
+```bash
+wget https://raw.githubusercontent.com/AutomataControls/IS0-10816-Vibration-Sensor/main/install-on-pi.sh
+chmod +x install-on-pi.sh
 ./install-on-pi.sh
 ```
 

@@ -151,7 +151,8 @@
 <body>
     <div class="header">
         <div class="logo">
-            <div class="logo-circle">AN</div>
+            <img src="icon.png" alt="AutomataNexus" style="width: 40px; height: 40px; border-radius: 50%;" onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex';">
+            <div id="logo-fallback" class="logo-circle" style="display: none;">AN</div>
             <h1>AutomataNexus Vibration Monitor</h1>
         </div>
         <div>
@@ -161,9 +162,15 @@
     </div>
 
     <div class="tabs">
-        <button class="tab active" onclick="showTab('monitoring', this)">📊 Monitoring</button>
-        <button class="tab" onclick="showTab('config', this)">⚙️ Configuration</button>
-        <button class="tab" onclick="showTab('control', this)">🎛️ Control</button>
+        <button class="tab active" onclick="showTab('monitoring', this)">
+            <span style="font-size: 18px;">📊</span> Monitoring
+        </button>
+        <button class="tab" onclick="showTab('config', this)">
+            <span style="font-size: 18px;">⚙️</span> Configuration
+        </button>
+        <button class="tab" onclick="showTab('control', this)">
+            <span style="font-size: 18px;">🎛️</span> Control
+        </button>
     </div>
 
     <div class="content">

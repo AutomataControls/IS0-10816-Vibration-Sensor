@@ -47,6 +47,11 @@ cd IS0-10816-Vibration-Sensor
 
 # Make scripts executable
 chmod +x *.sh
+chmod +x *.py
+
+# Create icon from logo or use fallback
+echo "Creating application icon..."
+python3 create-icon.py || echo "Using fallback icon"
 
 # Create systemd service for auto-start
 echo "6. Creating systemd service..."
