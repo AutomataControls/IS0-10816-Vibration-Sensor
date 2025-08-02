@@ -7,7 +7,6 @@
     <!-- Tailwind disabled for performance on Pi -->
     <!-- <script src="https://cdn.tailwindcss.com"></script> -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="sensor-config.js"></script>
     <style>
         @layer base {
           :root {
@@ -1168,5 +1167,8 @@
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', init);
     </script>
+    
+    <!-- Load sensor config after API_BASE is defined -->
+    <script src="sensor-config.js"></script>
 </body>
 </html>
