@@ -12,8 +12,8 @@ import csv
 import numpy as np
 from datetime import datetime
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
-from flask import Flask, jsonify
+from typing import Dict, List, Optional, Tuple
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
 
@@ -23,6 +23,67 @@ CORS(app)
 
 # Global monitor instance
 monitor_instance = None
+
+# Equipment types and their ISO 10816 classifications
+EQUIPMENT_TYPES = {
+    "cooling_tower_motor": "Cooling Tower Motor",
+    "centrifugal_pump": "Centrifugal Pump", 
+    "reciprocating_compressor": "Reciprocating Compressor",
+    "screw_compressor": "Screw Compressor",
+    "scroll_compressor": "Scroll Compressor",
+    "circulation_pump": "Circulation Pump",
+    "fan_motor": "Fan Motor",
+    "general_motor": "General Purpose Motor"
+}
+
+@dataclass
+class EquipmentConfig:
+    port: str
+    equipment_name: str  # User-defined name like "Cooling_Tower_1"
+    equipment_type: str
+    hp: float
+    voltage: int
+    phase: int  # 1 or 3
+    rpm: int = 1800  # default
+    mounting: str = "rigid"  # rigid or flexible
+    
+    def get_iso_thresholds(self) -> Dict[str, float]:
+        """Get ISO 10816-3 thresholds based on equipment type and power"""
+        # Convert HP to kW for ISO standards
+        kw = self.hp * 0.746
+        
+        # ISO 10816-3 Group classifications
+        # Group 1: 15kW < P <= 300kW (20-400 HP) on rigid foundations
+        # Group 2: 15kW < P <= 300kW on flexible foundations
+        # Group 3: 300kW < P <= 50MW on rigid foundations
+        # Group 4: 300kW < P <= 50MW on flexible foundations
+        
+        if self.mounting == "rigid":
+            if kw <= 300:  # Group 1
+                return {
+                    "zone_ab": 1.8,   # A/B boundary
+                    "zone_bc": 4.5,   # B/C boundary  
+                    "zone_cd": 11.0   # C/D boundary
+                }
+            else:  # Group 3
+                return {
+                    "zone_ab": 2.8,
+                    "zone_bc": 7.1,
+                    "zone_cd": 18.0
+                }
+        else:  # flexible mounting
+            if kw <= 300:  # Group 2
+                return {
+                    "zone_ab": 2.8,
+                    "zone_bc": 7.1,
+                    "zone_cd": 18.0
+                }
+            else:  # Group 4
+                return {
+                    "zone_ab": 3.5,
+                    "zone_bc": 8.5,
+                    "zone_cd": 21.0
+                }
 
 @dataclass
 class SensorReading:
@@ -46,6 +107,8 @@ class MultiPortVibrationMonitor:
         self.running = False
         self.csv_file = None
         self.csv_writer = None
+        self.equipment_configs = {}  # Port -> equipment configuration
+        self.configured = False
         
         # Initialize CSV logging
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -87,7 +150,7 @@ class MultiPortVibrationMonitor:
         self.csv_file = open(self.csv_filename, 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow([
-            'Timestamp', 'Sensor', 'AccelX', 'AccelY', 'AccelZ', 
+            'Timestamp', 'Equipment', 'Type', 'HP', 'AccelX', 'AccelY', 'AccelZ', 
             'RMS_Accel', 'Velocity_mms', 'ISO_Zone', 'Temperature', 'AlertLevel'
         ])
         
@@ -120,8 +183,11 @@ class MultiPortVibrationMonitor:
                     value = struct.unpack('>h', data_bytes[i:i+2])[0]
                     registers.append(value)
                 
-                # Extract sensor ID from port name
-                sensor_id = port.split('/')[-1].upper()  # "ttyUSB1" -> "TTYUSB1"
+                # Use equipment name if configured, otherwise use port
+                if port in self.equipment_configs:
+                    sensor_id = self.equipment_configs[port].equipment_name
+                else:
+                    sensor_id = port.split('/')[-1].upper()  # "ttyUSB1" -> "TTYUSB1"
                 
                 # Convert temperature
                 # Register 6 is temperature in 0.01°C units
@@ -131,6 +197,7 @@ class MultiPortVibrationMonitor:
                     temp_c = 25.0  # Default room temp
                 temp_f = (temp_c * 9/5) + 32
                 
+                # Note: One axis will show ~1g due to gravity when stationary
                 reading = SensorReading(
                     timestamp=datetime.now(),
                     sensor_id=sensor_id,
@@ -140,29 +207,74 @@ class MultiPortVibrationMonitor:
                     temperature=temp_f
                 )
                 
-                # Calculate RMS acceleration
+                # Calculate vibration RMS (subtract gravity component)
+                # When stationary, one axis will read ~1g due to gravity
+                # Find the axis with highest reading (likely gravity)
+                acc_values = [abs(reading.acceleration_x), abs(reading.acceleration_y), abs(reading.acceleration_z)]
+                gravity_axis_value = max(acc_values)
+                
+                # Calculate vibration by removing DC component (gravity)
+                # This is simplified - proper method would use high-pass filter
+                vibration_x = reading.acceleration_x
+                vibration_y = reading.acceleration_y
+                vibration_z = reading.acceleration_z
+                
+                # If one axis is close to 1g, assume it's gravity and focus on vibration
+                if 0.9 < gravity_axis_value < 1.1:
+                    # Subtract 1g from the axis showing gravity
+                    if abs(reading.acceleration_x) == gravity_axis_value:
+                        vibration_x = reading.acceleration_x - np.sign(reading.acceleration_x) * 1.0
+                    elif abs(reading.acceleration_y) == gravity_axis_value:
+                        vibration_y = reading.acceleration_y - np.sign(reading.acceleration_y) * 1.0
+                    elif abs(reading.acceleration_z) == gravity_axis_value:
+                        vibration_z = reading.acceleration_z - np.sign(reading.acceleration_z) * 1.0
+                
+                # Calculate RMS of vibration only
                 reading.rms_acceleration = np.sqrt(
-                    reading.acceleration_x**2 + 
-                    reading.acceleration_y**2 + 
-                    reading.acceleration_z**2
-                ) / np.sqrt(3)  # RMS of 3 axes
+                    vibration_x**2 + vibration_y**2 + vibration_z**2
+                ) / np.sqrt(3)
                 
-                # Convert to velocity (simplified - assumes 10Hz vibration)
-                reading.velocity_mms = reading.rms_acceleration * 9.81 * 1000 / (2 * np.pi * 10)
+                # Convert to velocity using typical machinery frequency
+                accel_ms2 = reading.rms_acceleration * 9.81
+                assumed_freq = 30.0  # Hz
+                reading.velocity_mms = (accel_ms2 / (2 * np.pi * assumed_freq)) * 1000
                 
-                # ISO 10816-3 zones for machines 15-300kW on rigid foundations
-                if reading.velocity_mms <= 1.8:
-                    reading.iso_zone = "A"  # Good
-                    reading.alert_level = "NORMAL"
-                elif reading.velocity_mms <= 4.5:
-                    reading.iso_zone = "B"  # Satisfactory
-                    reading.alert_level = "NORMAL"
-                elif reading.velocity_mms <= 11.0:
-                    reading.iso_zone = "C"  # Unsatisfactory
-                    reading.alert_level = "WARNING"
+                # Apply ISO 10816-3 zones based on equipment configuration
+                if port in self.equipment_configs:
+                    thresholds = self.equipment_configs[port].get_iso_thresholds()
+                    
+                    if reading.rms_acceleration < 0.01:  # Less than 0.01g is essentially stationary
+                        reading.iso_zone = "A"
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= thresholds["zone_ab"]:
+                        reading.iso_zone = "A"  # Good
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= thresholds["zone_bc"]:
+                        reading.iso_zone = "B"  # Satisfactory
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= thresholds["zone_cd"]:
+                        reading.iso_zone = "C"  # Unsatisfactory
+                        reading.alert_level = "WARNING"
+                    else:
+                        reading.iso_zone = "D"  # Unacceptable
+                        reading.alert_level = "CRITICAL"
                 else:
-                    reading.iso_zone = "D"  # Unacceptable
-                    reading.alert_level = "CRITICAL"
+                    # Default thresholds if not configured
+                    if reading.rms_acceleration < 0.01:
+                        reading.iso_zone = "A"
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= 1.8:
+                        reading.iso_zone = "A"
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= 4.5:
+                        reading.iso_zone = "B"
+                        reading.alert_level = "NORMAL"
+                    elif reading.velocity_mms <= 11.0:
+                        reading.iso_zone = "C"
+                        reading.alert_level = "WARNING"
+                    else:
+                        reading.iso_zone = "D"
+                        reading.alert_level = "CRITICAL"
                 
                 return reading
                 
@@ -174,6 +286,9 @@ class MultiPortVibrationMonitor:
         """Main monitoring loop"""
         self.running = True
         print("\nMonitoring started...")
+        print("=" * 80)
+        print("Gravity compensation: ON")
+        print("ISO 10816-3 zones: A=Good, B=Satisfactory, C=Unsatisfactory, D=Unacceptable")
         print("=" * 80)
         
         while self.running:
@@ -201,9 +316,20 @@ class MultiPortVibrationMonitor:
                           f"Temp: {reading.temperature:5.1f}°F")
                     
                     # Log to CSV
+                    # Get equipment info for CSV
+                    if port in self.equipment_configs:
+                        eq = self.equipment_configs[port]
+                        equipment_type = eq.equipment_type
+                        hp = eq.hp
+                    else:
+                        equipment_type = "Unknown"
+                        hp = 0
+                    
                     self.csv_writer.writerow([
                         reading.timestamp.isoformat(),
                         reading.sensor_id,
+                        equipment_type,
+                        hp,
                         reading.acceleration_x,
                         reading.acceleration_y,
                         reading.acceleration_z,
@@ -274,13 +400,25 @@ def serve_web_interface():
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-3xl font-ultralight text-gray-800">AutomataNexus Multi-Sensor Vibration Monitor</h1>
-                    <p class="text-gray-600">ISO 10816-3 Compliant • Real-time Analysis • 3x WTVB01-485 Sensors</p>
+                    <p class="text-gray-600">ISO 10816-3 Compliant • Real-time Analysis • Industrial Equipment Monitoring</p>
                 </div>
                 <div class="text-right">
                     <p class="text-sm text-gray-500">Powered by Neural BMS</p>
                     <p class="text-xs text-gray-400">© 2025 AutomataNexus AI</p>
                 </div>
             </div>
+        </div>
+
+        <!-- Configuration Panel (shown when not configured) -->
+        <div id="configPanel" class="glass-card p-6 mb-8 hidden">
+            <h2 class="text-2xl mb-6">Equipment Configuration Required</h2>
+            <p class="text-gray-600 mb-6">Please configure each sensor before starting monitoring:</p>
+            <div id="sensorConfigForms" class="space-y-4">
+                <!-- Forms will be dynamically added here -->
+            </div>
+            <button onclick="saveAllConfigurations()" class="mt-6 px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                Start Monitoring
+            </button>
         </div>
 
         <!-- Sensor Grid -->
@@ -300,6 +438,18 @@ def serve_web_interface():
     <script>
         const API_BASE = window.location.origin + '/api';
         let chart;
+        let systemStatus = null;
+        let equipmentTypes = {};
+
+        // Load equipment types
+        async function loadEquipmentTypes() {
+            try {
+                const response = await fetch(`${API_BASE}/equipment-types`);
+                equipmentTypes = await response.json();
+            } catch (error) {
+                console.error('Failed to load equipment types:', error);
+            }
+        }
 
         // Initialize chart
         function initChart() {
@@ -342,12 +492,136 @@ def serve_web_interface():
         // Load sensor data
         async function loadSensorData() {
             try {
+                // First check system status
+                const statusResponse = await fetch(`${API_BASE}/status`);
+                systemStatus = await statusResponse.json();
+                
+                // Show configuration panel if not configured
+                if (!systemStatus.configured && systemStatus.sensors.length > 0) {
+                    showConfigurationPanel();
+                    return;
+                }
+                
+                // Load readings if configured
                 const response = await fetch(`${API_BASE}/readings`);
                 const data = await response.json();
                 displaySensors(data);
                 updateChart(data);
             } catch (error) {
                 console.error('Failed to load data:', error);
+            }
+        }
+        
+        // Show configuration panel
+        function showConfigurationPanel() {
+            const configPanel = document.getElementById('configPanel');
+            const sensorGrid = document.getElementById('sensorGrid');
+            const formsDiv = document.getElementById('sensorConfigForms');
+            
+            configPanel.classList.remove('hidden');
+            sensorGrid.style.display = 'none';
+            
+            // Create forms for each sensor
+            formsDiv.innerHTML = '';
+            systemStatus.sensors.forEach((sensor, index) => {
+                const formHtml = `
+                    <div class="p-4 bg-gray-50 rounded-lg">
+                        <h3 class="font-medium mb-3">Sensor ${index + 1} - Port: ${sensor.port}</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm mb-1">Equipment Name</label>
+                                <input type="text" id="name_${sensor.port}" placeholder="e.g., Cooling_Tower_1" 
+                                       class="w-full px-3 py-2 border rounded" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm mb-1">Equipment Type</label>
+                                <select id="type_${sensor.port}" class="w-full px-3 py-2 border rounded">
+                                    ${Object.entries(equipmentTypes).map(([key, value]) => 
+                                        `<option value="${key}">${value}</option>`
+                                    ).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm mb-1">Motor HP</label>
+                                <input type="number" id="hp_${sensor.port}" placeholder="e.g., 50" 
+                                       class="w-full px-3 py-2 border rounded" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm mb-1">Voltage</label>
+                                <input type="number" id="voltage_${sensor.port}" placeholder="e.g., 480" 
+                                       class="w-full px-3 py-2 border rounded" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm mb-1">Phase</label>
+                                <select id="phase_${sensor.port}" class="w-full px-3 py-2 border rounded">
+                                    <option value="3">3-Phase</option>
+                                    <option value="1">Single-Phase</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm mb-1">Mounting</label>
+                                <select id="mounting_${sensor.port}" class="w-full px-3 py-2 border rounded">
+                                    <option value="rigid">Rigid</option>
+                                    <option value="flexible">Flexible</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                formsDiv.innerHTML += formHtml;
+            });
+        }
+        
+        // Save all configurations
+        async function saveAllConfigurations() {
+            const sensors = systemStatus.sensors;
+            let allConfigured = true;
+            
+            for (const sensor of sensors) {
+                const port = sensor.port;
+                const name = document.getElementById(`name_${port}`).value;
+                const type = document.getElementById(`type_${port}`).value;
+                const hp = document.getElementById(`hp_${port}`).value;
+                const voltage = document.getElementById(`voltage_${port}`).value;
+                const phase = document.getElementById(`phase_${port}`).value;
+                const mounting = document.getElementById(`mounting_${port}`).value;
+                
+                if (!name || !hp || !voltage) {
+                    alert('Please fill all required fields');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch(`${API_BASE}/configure`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            port: port,
+                            equipment_name: name,
+                            equipment_type: type,
+                            hp: parseFloat(hp),
+                            voltage: parseInt(voltage),
+                            phase: parseInt(phase),
+                            mounting: mounting
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    if (!result.success) {
+                        allConfigured = false;
+                        break;
+                    }
+                } catch (error) {
+                    console.error('Configuration error:', error);
+                    allConfigured = false;
+                    break;
+                }
+            }
+            
+            if (allConfigured) {
+                document.getElementById('configPanel').classList.add('hidden');
+                document.getElementById('sensorGrid').style.display = '';
+                loadSensorData();
             }
         }
 
@@ -379,18 +653,32 @@ def serve_web_interface():
                 };
                 const alertColor = alertColors[reading.alert_level] || 'gray';
                 
+                // Get equipment info from system status
+                let equipmentInfo = "";
+                if (systemStatus && systemStatus.sensors) {
+                    const sensorConfig = systemStatus.sensors.find(s => 
+                        s.name === id || s.port === reading.port
+                    );
+                    if (sensorConfig && sensorConfig.configured) {
+                        equipmentInfo = `
+                            <div class="text-sm text-gray-500 mb-2">
+                                ${equipmentTypes[sensorConfig.type] || sensorConfig.type} • ${sensorConfig.hp} HP • ${sensorConfig.voltage}V/${sensorConfig.phase}φ
+                            </div>
+                        `;
+                    }
+                }
+                
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-4">
-                        <h3 class="text-xl">${id}</h3>
+                        <div>
+                            <h3 class="text-xl">${id}</h3>
+                            ${equipmentInfo}
+                        </div>
                         <span class="px-3 py-1 rounded-full text-xs font-medium bg-${alertColor}-500 text-white">
                             ${reading.alert_level}
                         </span>
                     </div>
                     <div class="space-y-2">
-                        <div class="flex justify-between">
-                            <span class="text-gray-600">Port:</span>
-                            <span class="font-medium">${reading.port}</span>
-                        </div>
                         <div class="flex justify-between">
                             <span class="text-gray-600">Temperature:</span>
                             <span class="font-medium">${reading.temperature_f.toFixed(1)}°F</span>
@@ -409,8 +697,8 @@ def serve_web_interface():
                         </div>
                         <div class="mt-3 pt-3 border-t border-gray-200">
                             <div class="text-sm text-gray-600">
-                                X: ${reading.acceleration.x.toFixed(3)}g<br>
-                                Y: ${reading.acceleration.y.toFixed(3)}g<br>
+                                X: ${reading.acceleration.x.toFixed(3)}g, 
+                                Y: ${reading.acceleration.y.toFixed(3)}g, 
                                 Z: ${reading.acceleration.z.toFixed(3)}g
                             </div>
                         </div>
@@ -464,7 +752,9 @@ def serve_web_interface():
 
         // Initialize
         initChart();
-        loadSensorData();
+        loadEquipmentTypes().then(() => {
+            loadSensorData();
+        });
         
         // Auto-refresh
         setInterval(loadSensorData, 1000);
@@ -477,12 +767,73 @@ def serve_web_interface():
 def get_status():
     """Get system status"""
     if monitor_instance:
+        # Build sensor config info
+        sensor_configs = []
+        for port in monitor_instance.serial_connections.keys():
+            if port in monitor_instance.equipment_configs:
+                config = monitor_instance.equipment_configs[port]
+                sensor_configs.append({
+                    'port': port,
+                    'name': config.equipment_name,
+                    'type': config.equipment_type,
+                    'hp': config.hp,
+                    'voltage': config.voltage,
+                    'phase': config.phase,
+                    'configured': True
+                })
+            else:
+                sensor_configs.append({
+                    'port': port,
+                    'name': port.split('/')[-1].upper(),
+                    'configured': False
+                })
+        
         return jsonify({
             'running': monitor_instance.running,
-            'sensors': list(monitor_instance.serial_connections.keys()),
-            'active_sensors': len(monitor_instance.serial_connections)
+            'configured': monitor_instance.configured,
+            'sensors': sensor_configs,
+            'active_sensors': len(monitor_instance.serial_connections),
+            'total_readings': len(monitor_instance.latest_readings),
+            'start_time': datetime.now().isoformat()
         })
     return jsonify({'error': 'Monitor not initialized'}), 503
+
+@app.route('/api/configure', methods=['POST'])
+def configure_equipment():
+    """Configure equipment for each sensor"""
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 503
+    
+    data = request.json
+    port = data.get('port')
+    
+    if port not in monitor_instance.serial_connections:
+        return jsonify({'error': 'Invalid port'}), 400
+    
+    # Create equipment configuration
+    config = EquipmentConfig(
+        port=port,
+        equipment_name=data.get('equipment_name', f'Equipment_{port}'),
+        equipment_type=data.get('equipment_type', 'general_motor'),
+        hp=float(data.get('hp', 20)),
+        voltage=int(data.get('voltage', 480)),
+        phase=int(data.get('phase', 3)),
+        rpm=int(data.get('rpm', 1800)),
+        mounting=data.get('mounting', 'rigid')
+    )
+    
+    monitor_instance.equipment_configs[port] = config
+    
+    # Check if all sensors are configured
+    if len(monitor_instance.equipment_configs) == len(monitor_instance.serial_connections):
+        monitor_instance.configured = True
+    
+    return jsonify({'success': True, 'configured': monitor_instance.configured})
+
+@app.route('/api/equipment-types')
+def get_equipment_types():
+    """Get available equipment types"""
+    return jsonify(EQUIPMENT_TYPES)
 
 @app.route('/api/readings')
 def get_readings():
