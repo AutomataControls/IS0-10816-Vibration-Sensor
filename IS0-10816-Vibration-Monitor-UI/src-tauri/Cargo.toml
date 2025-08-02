@@ -1,0 +1,20 @@
+[package]
+name = "automatanexus-vibration-monitor"
+version = "1.0.0"
+description = "AutomataNexus Universal Vibration Monitor - Professional Industrial Monitoring Suite"
+authors = ["AutomataNexus AI"]
+license = "Commercial"
+repository = "https://github.com/AutomataControls/IS0-10816-Vibration-Sensor"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

@@ -1,0 +1,21 @@
+{
+  "name": "automatanexus-vibration-monitor-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AutomataNexus Universal Vibration Monitor - Professional Industrial Monitoring Suite",
+  "author": "AutomataNexus AI",
+  "license": "Commercial",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "build:macos": "tauri build --target universal-apple-darwin",
+    "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
+    "build:all": "npm run build:windows && npm run build:macos && npm run build:linux"
+  },
+  "keywords": ["industrial", "vibration", "monitoring", "iso-10816", "predictive-maintenance"],
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.7.1"
+  }
+}

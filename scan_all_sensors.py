@@ -42,7 +42,18 @@ def main():
     print("=" * 50)
     
     try:
-        ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=0.5)
+        # Auto-detect USB serial port
+        import os
+        if os.path.exists("/dev/ttyUSB0"):
+            port = "/dev/ttyUSB0"
+        elif os.path.exists("/dev/ttyUSB1"):
+            port = "/dev/ttyUSB1"
+        else:
+            print("ERROR: No USB serial device found!")
+            return
+            
+        print(f"Using port: {port}")
+        ser = serial.Serial(port, 9600, timeout=0.5)
         time.sleep(0.5)
         
         found_sensors = []

@@ -1672,7 +1672,18 @@ def main():
     print("=" * 90)
     
     # Create monitor instance
-    monitor_instance = UniversalVibrationMonitor("/dev/ttyUSB0", "sensor_config.json")
+    # Check which USB device exists
+    import os
+    if os.path.exists("/dev/ttyUSB0"):
+        port = "/dev/ttyUSB0"
+    elif os.path.exists("/dev/ttyUSB1"):
+        port = "/dev/ttyUSB1"
+    else:
+        print("ERROR: No USB serial device found!")
+        port = "/dev/ttyUSB0"  # Default
+    
+    print(f"Using serial port: {port}")
+    monitor_instance = UniversalVibrationMonitor(port, "sensor_config.json")
     
     # Start web API in separate thread
     api_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False))
