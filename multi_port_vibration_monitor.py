@@ -109,10 +109,14 @@ class MultiPortVibrationMonitor:
         self.csv_writer = None
         self.equipment_configs = {}  # Port -> equipment configuration
         self.configured = False
+        self.config_file = "equipment_config.json"
         
         # Initialize CSV logging
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.csv_filename = f"multi_sensor_data_{timestamp}.csv"
+        
+        # Load saved configuration if exists
+        self.load_configuration()
         
     def calculate_crc16(self, data):
         """Calculate Modbus CRC16"""
@@ -358,6 +362,59 @@ class MultiPortVibrationMonitor:
             self.csv_file.close()
         
         print("Monitoring stopped")
+    
+    def save_configuration(self):
+        """Save equipment configuration to file"""
+        import json
+        config_data = {}
+        for port, config in self.equipment_configs.items():
+            config_data[port] = {
+                'equipment_name': config.equipment_name,
+                'equipment_type': config.equipment_type,
+                'hp': config.hp,
+                'voltage': config.voltage,
+                'phase': config.phase,
+                'rpm': config.rpm,
+                'mounting': config.mounting
+            }
+        
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(config_data, f, indent=2)
+            print(f"Configuration saved to {self.config_file}")
+        except Exception as e:
+            print(f"Error saving configuration: {e}")
+    
+    def load_configuration(self):
+        """Load equipment configuration from file"""
+        import json
+        if not os.path.exists(self.config_file):
+            return
+        
+        try:
+            with open(self.config_file, 'r') as f:
+                config_data = json.load(f)
+            
+            for port, data in config_data.items():
+                if port in self.ports:  # Only load config for current ports
+                    self.equipment_configs[port] = EquipmentConfig(
+                        port=port,
+                        equipment_name=data['equipment_name'],
+                        equipment_type=data['equipment_type'],
+                        hp=data['hp'],
+                        voltage=data['voltage'],
+                        phase=data['phase'],
+                        rpm=data.get('rpm', 1800),
+                        mounting=data.get('mounting', 'rigid')
+                    )
+            
+            # Check if all ports are configured
+            if len(self.equipment_configs) == len(self.ports):
+                self.configured = True
+                
+            print(f"Loaded configuration for {len(self.equipment_configs)} sensors")
+        except Exception as e:
+            print(f"Error loading configuration: {e}")
 
 # Flask API Routes
 @app.route('/')
@@ -528,45 +585,56 @@ def serve_web_interface():
             // Create forms for each sensor
             formsDiv.innerHTML = '';
             systemStatus.sensors.forEach((sensor, index) => {
+                // Get saved values if configured
+                const name = sensor.configured ? sensor.name : '';
+                const type = sensor.configured ? sensor.type : 'general_motor';
+                const hp = sensor.configured ? sensor.hp : '';
+                const voltage = sensor.configured ? sensor.voltage : '480';
+                const phase = sensor.configured ? sensor.phase : '3';
+                const mounting = sensor.configured ? (sensor.mounting || 'rigid') : 'rigid';
+                
                 const formHtml = `
-                    <div class="p-4 bg-gray-50 rounded-lg">
-                        <h3 class="font-medium mb-3">Sensor ${index + 1} - Port: ${sensor.port}</h3>
+                    <div class="p-4 bg-gray-50 rounded-lg ${sensor.configured ? 'border-2 border-green-300' : ''}">
+                        <h3 class="font-medium mb-3">
+                            Sensor ${index + 1} - Port: ${sensor.port}
+                            ${sensor.configured ? '<span class="text-green-600 text-sm ml-2">(Configured)</span>' : ''}
+                        </h3>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm mb-1">Equipment Name</label>
                                 <input type="text" id="name_${sensor.port}" placeholder="e.g., Cooling_Tower_1" 
-                                       class="w-full px-3 py-2 border rounded" required>
+                                       value="${name}" class="w-full px-3 py-2 border rounded" required>
                             </div>
                             <div>
                                 <label class="block text-sm mb-1">Equipment Type</label>
                                 <select id="type_${sensor.port}" class="w-full px-3 py-2 border rounded">
                                     ${Object.entries(equipmentTypes).map(([key, value]) => 
-                                        `<option value="${key}">${value}</option>`
+                                        `<option value="${key}" ${key === type ? 'selected' : ''}>${value}</option>`
                                     ).join('')}
                                 </select>
                             </div>
                             <div>
                                 <label class="block text-sm mb-1">Motor HP</label>
                                 <input type="number" id="hp_${sensor.port}" placeholder="e.g., 50" 
-                                       class="w-full px-3 py-2 border rounded" required>
+                                       value="${hp}" class="w-full px-3 py-2 border rounded" required>
                             </div>
                             <div>
                                 <label class="block text-sm mb-1">Voltage</label>
                                 <input type="number" id="voltage_${sensor.port}" placeholder="e.g., 480" 
-                                       class="w-full px-3 py-2 border rounded" required>
+                                       value="${voltage}" class="w-full px-3 py-2 border rounded" required>
                             </div>
                             <div>
                                 <label class="block text-sm mb-1">Phase</label>
                                 <select id="phase_${sensor.port}" class="w-full px-3 py-2 border rounded">
-                                    <option value="3">3-Phase</option>
-                                    <option value="1">Single-Phase</option>
+                                    <option value="3" ${phase == 3 ? 'selected' : ''}>3-Phase</option>
+                                    <option value="1" ${phase == 1 ? 'selected' : ''}>Single-Phase</option>
                                 </select>
                             </div>
                             <div>
                                 <label class="block text-sm mb-1">Mounting</label>
                                 <select id="mounting_${sensor.port}" class="w-full px-3 py-2 border rounded">
-                                    <option value="rigid">Rigid</option>
-                                    <option value="flexible">Flexible</option>
+                                    <option value="rigid" ${mounting === 'rigid' ? 'selected' : ''}>Rigid</option>
+                                    <option value="flexible" ${mounting === 'flexible' ? 'selected' : ''}>Flexible</option>
                                 </select>
                             </div>
                         </div>
@@ -623,12 +691,24 @@ def serve_web_interface():
             }
             
             if (allConfigured) {
-                document.getElementById('configPanel').classList.add('hidden');
-                document.getElementById('sensorGrid').style.display = '';
-                const chartContainer = document.getElementById('chartContainer');
-                if (chartContainer) chartContainer.style.display = '';
-                startAutoRefresh();
-                loadSensorData();
+                // Start monitoring via API
+                fetch(`${API_BASE}/monitoring/start`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            document.getElementById('configPanel').classList.add('hidden');
+                            document.getElementById('sensorGrid').style.display = '';
+                            const chartContainer = document.getElementById('chartContainer');
+                            if (chartContainer) chartContainer.style.display = '';
+                            startAutoRefresh();
+                            loadSensorData();
+                        } else {
+                            alert('Failed to start monitoring: ' + (result.error || result.message));
+                        }
+                    })
+                    .catch(error => {
+                        alert('Error starting monitoring: ' + error);
+                    });
             }
         }
 
@@ -844,12 +924,45 @@ def configure_equipment():
     if len(monitor_instance.equipment_configs) == len(monitor_instance.serial_connections):
         monitor_instance.configured = True
     
+    # Save configuration to file
+    monitor_instance.save_configuration()
+    
     return jsonify({'success': True, 'configured': monitor_instance.configured})
 
 @app.route('/api/equipment-types')
 def get_equipment_types():
     """Get available equipment types"""
     return jsonify(EQUIPMENT_TYPES)
+
+@app.route('/api/monitoring/start', methods=['POST'])
+def start_monitoring():
+    """Start monitoring if configured"""
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 503
+    
+    if not monitor_instance.configured:
+        return jsonify({'error': 'Equipment not configured'}), 400
+    
+    if monitor_instance.running:
+        return jsonify({'message': 'Already running'}), 200
+    
+    # Start monitoring in a separate thread
+    monitor_thread = threading.Thread(target=monitor_instance.run_monitoring)
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    return jsonify({'success': True, 'message': 'Monitoring started'})
+
+@app.route('/api/monitoring/stop', methods=['POST'])  
+def stop_monitoring():
+    """Stop monitoring"""
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 503
+    
+    monitor_instance.running = False
+    time.sleep(2)  # Give it time to stop
+    
+    return jsonify({'success': True, 'message': 'Monitoring stopped'})
 
 @app.route('/api/readings')
 def get_readings():
@@ -916,11 +1029,24 @@ def main():
     
     print(f"\nWeb API started on http://localhost:{api_port}")
     
-    # Start monitoring in main thread
+    # Check if already configured
+    if monitor_instance.configured:
+        print("Found saved configuration. Starting monitoring automatically...")
+        # Start monitoring in a separate thread
+        monitor_thread = threading.Thread(target=monitor_instance.run_monitoring)
+        monitor_thread.daemon = True
+        monitor_thread.start()
+    else:
+        print("\nNo configuration found. Please configure equipment via web interface.")
+        print(f"Open http://localhost:{api_port} to configure sensors.")
+    
+    # Keep the main thread alive
     try:
-        monitor_instance.run_monitoring()
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
-        print("\nStopping...")
+        print("\nShutting down...")
+        monitor_instance.running = False
         monitor_instance.stop()
 
 if __name__ == "__main__":
