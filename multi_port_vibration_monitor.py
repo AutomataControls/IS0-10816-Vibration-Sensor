@@ -202,41 +202,58 @@ class MultiPortVibrationMonitor:
                 temp_f = (temp_c * 9/5) + 32
                 
                 # Note: One axis will show ~1g due to gravity when stationary
+                raw_x = registers[0] / 32768.0 * 16.0
+                raw_y = registers[1] / 32768.0 * 16.0
+                raw_z = registers[2] / 32768.0 * 16.0
+                
                 reading = SensorReading(
                     timestamp=datetime.now(),
                     sensor_id=sensor_id,
-                    acceleration_x=registers[0] / 32768.0 * 16.0,
-                    acceleration_y=registers[1] / 32768.0 * 16.0,
-                    acceleration_z=registers[2] / 32768.0 * 16.0,
+                    acceleration_x=raw_x,
+                    acceleration_y=raw_y,
+                    acceleration_z=raw_z,
                     temperature=temp_f
                 )
                 
+                # Debug: Show raw values for each sensor on first read
+                if port not in self.latest_readings:
+                    print(f"\nDEBUG {sensor_id} raw accel: X={raw_x:.3f}g, Y={raw_y:.3f}g, Z={raw_z:.3f}g")
+                
                 # Calculate vibration RMS (subtract gravity component)
-                # When stationary, one axis will read ~1g due to gravity
-                # Find the axis with highest reading (likely gravity)
-                acc_values = [abs(reading.acceleration_x), abs(reading.acceleration_y), abs(reading.acceleration_z)]
-                gravity_axis_value = max(acc_values)
+                # Total acceleration magnitude should be ~1g when stationary
+                total_magnitude = np.sqrt(
+                    reading.acceleration_x**2 + 
+                    reading.acceleration_y**2 + 
+                    reading.acceleration_z**2
+                )
                 
-                # Calculate vibration by removing DC component (gravity)
-                # This is simplified - proper method would use high-pass filter
-                vibration_x = reading.acceleration_x
-                vibration_y = reading.acceleration_y
-                vibration_z = reading.acceleration_z
-                
-                # If one axis is close to 1g, assume it's gravity and focus on vibration
-                if 0.9 < gravity_axis_value < 1.1:
-                    # Subtract 1g from the axis showing gravity
-                    if abs(reading.acceleration_x) == gravity_axis_value:
-                        vibration_x = reading.acceleration_x - np.sign(reading.acceleration_x) * 1.0
-                    elif abs(reading.acceleration_y) == gravity_axis_value:
-                        vibration_y = reading.acceleration_y - np.sign(reading.acceleration_y) * 1.0
-                    elif abs(reading.acceleration_z) == gravity_axis_value:
-                        vibration_z = reading.acceleration_z - np.sign(reading.acceleration_z) * 1.0
-                
-                # Calculate RMS of vibration only
-                reading.rms_acceleration = np.sqrt(
-                    vibration_x**2 + vibration_y**2 + vibration_z**2
-                ) / np.sqrt(3)
+                # For stationary sensor, total should be close to 1g
+                # The vibration is the deviation from 1g
+                if 0.9 < total_magnitude < 1.2:
+                    # Sensor is relatively stationary
+                    # Vibration is approximately the deviation from 1g
+                    vibration_magnitude = abs(total_magnitude - 1.0)
+                    reading.rms_acceleration = vibration_magnitude
+                else:
+                    # High acceleration - might be actual vibration
+                    # Use simple high-pass filter approach
+                    # Remove DC component by subtracting mean expected gravity
+                    gravity_vector_magnitude = 1.0
+                    
+                    # Normalize the acceleration vector
+                    if total_magnitude > 0:
+                        norm_x = reading.acceleration_x / total_magnitude
+                        norm_y = reading.acceleration_y / total_magnitude
+                        norm_z = reading.acceleration_z / total_magnitude
+                        
+                        # Subtract gravity component
+                        vib_x = reading.acceleration_x - norm_x * gravity_vector_magnitude
+                        vib_y = reading.acceleration_y - norm_y * gravity_vector_magnitude
+                        vib_z = reading.acceleration_z - norm_z * gravity_vector_magnitude
+                        
+                        reading.rms_acceleration = np.sqrt(vib_x**2 + vib_y**2 + vib_z**2) / np.sqrt(3)
+                    else:
+                        reading.rms_acceleration = 0.0
                 
                 # Convert to velocity using typical machinery frequency
                 accel_ms2 = reading.rms_acceleration * 9.81
