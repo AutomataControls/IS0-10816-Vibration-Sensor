@@ -1,5 +1,15 @@
 #!/bin/bash
+################################################################################
 # AutomataNexus Vibration Monitor - Master Installer
+# Enterprise-Grade ISO 10816-3 Compliant Vibration Analysis Platform
+################################################################################
+#
+# © 2025 AutomataNexus AI & AutomataControls. All rights reserved.
+#
+# COMMERCIAL LICENSE NOTICE:
+# This software is commercially licensed, not open source. For licensing inquiries,
+# contact DevOps@automatacontrols.com. See COMMERCIAL.md for full license terms.
+#
 # Automatically chooses GUI or CLI installation
 
 echo "AutomataNexus Vibration Monitor Installer"

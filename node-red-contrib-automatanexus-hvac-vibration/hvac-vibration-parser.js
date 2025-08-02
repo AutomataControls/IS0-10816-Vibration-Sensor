@@ -1,7 +1,28 @@
 /**
- * AutomataNexus HVAC Controls - Vibration Monitoring
+ * ################################################################################
+ * # AutomataNexus Vibration Monitor - Node-RED HVAC Parser
+ * # Enterprise-Grade ISO 10816-3 Compliant Vibration Analysis Platform
+ * ################################################################################
+ * #
+ * # 🔧 Professional Vibration Monitoring Solution - HVAC Integration
+ * # 📊 Enterprise-Grade Equipment Health Analysis with ISO Standards
+ * #
+ * # © 2025 AutomataNexus AI & AutomataControls. All rights reserved.
+ * #
+ * # COMMERCIAL LICENSE NOTICE:
+ * # This software is commercially licensed, not open source. For licensing inquiries,
+ * # contact DevOps@automatacontrols.com. See COMMERCIAL.md for full license terms.
+ * # This code is protected and proprietary. No redistribution allowed.
+ * #
+ * # Author: Andrew Jewell Sr. - Dev Ops Automata Controls / AutomataNexus AI
+ * # License: Commercial License Required (Professional/Business/Enterprise)
+ * # Serial Number: VIB-2025-HVAC-001
+ * # Website: https://vibration.automatacontrols.com
+ * #
+ * # Unauthorized use, reproduction, or distribution is strictly prohibited.
+ * ################################################################################
+ * 
  * Professional WitMotion WT901C-485 Integration for HVAC Systems
- * (c) 2025 AutomataNexus AI & AutomataControls
  */
 
 module.exports = function(RED) {

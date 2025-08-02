@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+################################################################################
+# AutomataNexus Vibration Monitor - GUI Installer
+# Enterprise-Grade ISO 10816-3 Compliant Vibration Analysis Platform
+################################################################################
+#
+# © 2025 AutomataNexus AI & AutomataControls. All rights reserved.
+#
+# COMMERCIAL LICENSE NOTICE:
+# This software is commercially licensed, not open source. For licensing inquiries,
+# contact DevOps@automatacontrols.com. See COMMERCIAL.md for full license terms.
+#
+# Professional installation wizard with progress tracking
+################################################################################
+
 """
 AutomataNexus Vibration Monitor GUI Installer
 Professional installation wizard with progress tracking
