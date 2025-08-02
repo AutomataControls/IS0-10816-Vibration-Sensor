@@ -1230,7 +1230,10 @@ def get_readings():
     if monitor_instance and monitor_instance.latest_readings:
         readings = {}
         for port, reading in monitor_instance.latest_readings.items():
-            readings[reading.sensor_id] = {
+            # Get equipment config if available
+            equipment_config = monitor_instance.equipment_configs.get(port)
+            
+            sensor_data = {
                 'timestamp': reading.timestamp.isoformat(),
                 'port': port,
                 'temperature_f': reading.temperature,
@@ -1244,6 +1247,18 @@ def get_readings():
                 'iso_zone': reading.iso_zone,
                 'alert_level': reading.alert_level
             }
+            
+            # Add equipment configuration if available
+            if equipment_config:
+                sensor_data['equipment_type'] = equipment_config.equipment_type
+                sensor_data['hp'] = equipment_config.hp
+                sensor_data['voltage'] = equipment_config.voltage
+                sensor_data['phase'] = equipment_config.phase
+                sensor_data['rpm'] = equipment_config.rpm
+                sensor_data['mounting'] = equipment_config.mounting
+            
+            readings[reading.sensor_id] = sensor_data
+            
         return jsonify(readings)
     return jsonify({})
 

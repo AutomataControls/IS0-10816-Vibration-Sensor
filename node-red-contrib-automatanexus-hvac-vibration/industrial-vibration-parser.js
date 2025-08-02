@@ -283,7 +283,7 @@ module.exports = function(RED) {
                     
                     results.push({
                         equipment_name: equipmentName,
-                        equipment_type: detectEquipmentType(equipmentName),
+                        equipment_type: sensorData.equipment_type || detectEquipmentType(equipmentName),
                         temperature_f: sensorData.temperature_f,
                         vibration_velocity: sensorData.velocity_mms,
                         rms_acceleration: sensorData.rms_acceleration,
@@ -292,7 +292,10 @@ module.exports = function(RED) {
                         // Include any additional fields from API
                         hp: sensorData.hp,
                         voltage: sensorData.voltage,
-                        phase: sensorData.phase
+                        phase: sensorData.phase,
+                        rpm: sensorData.rpm,
+                        mounting: sensorData.mounting,
+                        port: sensorData.port
                     });
                 }
             }
@@ -301,15 +304,29 @@ module.exports = function(RED) {
             return results.length === 1 ? results[0] : results;
         }
         
-        // Detect equipment type from name
+        // Detect equipment type from name or type string
         function detectEquipmentType(name) {
             let lowerName = name.toLowerCase();
-            if (lowerName.includes('cooling_tower')) return 'COOLING_TOWER';
+            
+            // Direct equipment type mappings
+            if (lowerName === 'cooling_tower_motor') return 'COOLING_TOWER';
+            if (lowerName === 'centrifugal_pump') return 'CENTRIFUGAL_PUMP';
+            if (lowerName === 'reciprocating_compressor') return 'RECIPROCATING_COMPRESSOR';
+            if (lowerName === 'screw_compressor') return 'SCREW_COMPRESSOR';
+            if (lowerName === 'scroll_compressor') return 'SCROLL_COMPRESSOR';
+            if (lowerName === 'circulation_pump') return 'CIRCULATION_PUMP';
+            if (lowerName === 'fan_motor') return 'HVAC_FAN';
+            if (lowerName === 'general_motor') return 'MOTOR_GENERAL';
+            
+            // Name-based detection
+            if (lowerName.includes('cooling') && lowerName.includes('tower')) return 'COOLING_TOWER';
             if (lowerName.includes('pump')) return 'CENTRIFUGAL_PUMP';
             if (lowerName.includes('compressor')) return 'SCREW_COMPRESSOR';
             if (lowerName.includes('fan')) return 'HVAC_FAN';
             if (lowerName.includes('blower')) return 'BLOWER';
             if (lowerName.includes('mixer')) return 'MIXER_AGITATOR';
+            if (lowerName.includes('motor')) return 'MOTOR_GENERAL';
+            
             return 'MOTOR_GENERAL';
         }
         
