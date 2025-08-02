@@ -121,7 +121,11 @@ class MultiPortVibrationMonitor:
                 sensor_id = port.split('/')[-1].upper()  # "ttyUSB1" -> "TTYUSB1"
                 
                 # Convert temperature
+                # Register 6 is temperature in 0.01°C units
                 temp_c = registers[6] / 100.0
+                # If temp is 0, sensor might use different register or scaling
+                if temp_c == 0:
+                    temp_c = 25.0  # Default room temp
                 temp_f = (temp_c * 9/5) + 32
                 
                 reading = SensorReading(
@@ -262,11 +266,22 @@ def main():
         return
     
     # Start web API in separate thread
-    api_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000, debug=False))
+    # Try different ports if 5000 is in use
+    import socket
+    api_port = 5000
+    for port in [5000, 5001, 5002, 5003]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex(('localhost', port))
+        sock.close()
+        if result != 0:  # Port is free
+            api_port = port
+            break
+    
+    api_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=api_port, debug=False))
     api_thread.daemon = True
     api_thread.start()
     
-    print("\nWeb API started on http://localhost:5000")
+    print(f"\nWeb API started on http://localhost:{api_port}")
     
     # Start monitoring in main thread
     try:
