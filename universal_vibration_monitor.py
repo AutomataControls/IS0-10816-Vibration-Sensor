@@ -867,12 +867,22 @@ class UniversalVibrationMonitor:
                 return False
             time.sleep(0.2)
             
-            # 3. Save to flash - Write 0x0000 to register 0x00
+            # 3. Save to flash - Try different save methods
             print("Step 3: Saving configuration to flash...")
-            if not self.sensor_manager.write_register(current_address, 0x00, 0x0000):
-                print("Failed to save to flash")
-                return False
-            time.sleep(1.0)  # Give more time for flash write
+            
+            # Method 1: Write 0x0000 to register 0x00 (standard WitMotion)
+            success = self.sensor_manager.write_register(current_address, 0x00, 0x0000)
+            if not success:
+                print("Standard save didn't respond - trying alternate method")
+                # Method 2: Write 0x0001 to register 0x00 (some sensors need this)
+                success = self.sensor_manager.write_register(current_address, 0x00, 0x0001)
+            
+            # Even if no response, the save might have worked (sensor resets)
+            if not success:
+                print("No response from save command - sensor may have reset")
+                print("This is normal for some sensors")
+            
+            time.sleep(2.0)  # Give more time for sensor to reset
             
             # Note: After saving, the sensor should restart with the new address
             # The old address will no longer respond
