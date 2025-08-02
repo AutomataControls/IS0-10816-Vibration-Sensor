@@ -1,0 +1,67 @@
+<script type="text/javascript">
+    RED.nodes.registerType('hvac-vibration-parser', {
+        category: 'AutomataNexus HVAC',
+        color: '#AFEEEE',
+        defaults: {
+            name: { value: "" },
+            outputFormat: { value: "standard" },
+            globalVars: { value: true },
+            hvacPrefix: { value: "hvac_motor" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-industry",
+        label: function() {
+            return this.name || "HVAC Vibration Monitor";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="hvac-vibration-parser">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="HVAC Vibration Monitor">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-outputFormat"><i class="fa fa-list"></i> Output Format</label>
+        <select id="node-input-outputFormat">
+            <option value="standard">Standard JSON</option>
+            <option value="mqtt">MQTT Topics</option>
+            <option value="opc">OPC-UA</option>
+        </select>
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-hvacPrefix"><i class="fa fa-tag"></i> HVAC Prefix</label>
+        <input type="text" id="node-input-hvacPrefix" placeholder="hvac_motor">
+    </div>
+    
+    <div class="form-row">
+        <input type="checkbox" id="node-input-globalVars" style="display: inline-block; width: auto;">
+        <label for="node-input-globalVars" style="width: 70%;"> Set Global Variables</label>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="hvac-vibration-parser">
+    <p><strong>AutomataNexus HVAC Controls - Vibration Monitoring</strong></p>
+    <p>Professional HVAC motor vibration monitoring with predictive maintenance.</p>
+    
+    <h3>Features:</h3>
+    <ul>
+        <li>ISO 10816 compliance for HVAC motors</li>
+        <li>Energy efficiency monitoring</li>
+        <li>Building automation integration</li>
+        <li>Predictive maintenance alerts</li>
+    </ul>
+    
+    <h3>HVAC Motor Types:</h3>
+    <ul>
+        <li><strong>0x50:</strong> AHU Supply Fan</li>
+        <li><strong>0x51:</strong> AHU Return Fan</li>
+        <li><strong>0x52:</strong> Chiller Pump</li>
+        <li><strong>0x53:</strong> Cooling Tower Fan</li>
+    </ul>
+    
+    <p><strong>(c) 2025 AutomataNexus AI & AutomataControls</strong></p>
+</script>

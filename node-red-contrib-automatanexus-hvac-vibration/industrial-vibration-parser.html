@@ -1,0 +1,401 @@
+<script type="text/javascript">
+    RED.nodes.registerType('industrial-vibration-parser', {
+        category: 'AutomataNexus',
+        color: '#00CED1',
+        defaults: {
+            name: {value: ""},
+            outputFormat: {value: "standard"},
+            globalVars: {value: true},
+            globalPrefix: {value: "industrial"},
+            sensorMappings: {value: []}
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-industry",
+        label: function() {
+            return this.name || "WTVB01-485 Parser";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            var node = this;
+            
+            // Equipment type options
+            var equipmentTypes = [
+                {value: "MOTOR_GENERAL", text: "General Motor"},
+                {value: "HVAC_FAN", text: "HVAC Fan"},
+                {value: "CENTRIFUGAL_PUMP", text: "Centrifugal Pump"},
+                {value: "RECIPROCATING_COMPRESSOR", text: "Reciprocating Compressor"},
+                {value: "SCREW_COMPRESSOR", text: "Screw Compressor"},
+                {value: "COOLING_TOWER", text: "Cooling Tower Fan"},
+                {value: "CONVEYOR_MOTOR", text: "Conveyor Motor"},
+                {value: "MIXER_AGITATOR", text: "Mixer/Agitator"},
+                {value: "BLOWER", text: "Blower"},
+                {value: "GEARBOX", text: "Gearbox"},
+                {value: "GENERATOR", text: "Generator"},
+                {value: "TURBINE", text: "Turbine"},
+                {value: "VACUUM_PUMP", text: "Vacuum Pump"},
+                {value: "CRUSHER", text: "Crusher/Mill"},
+                {value: "CUSTOM", text: "Custom Equipment"}
+            ];
+            
+            // Initialize sensor mapping table
+            $("#sensor-mapping-container").editableList({
+                addItem: function(container, i, mapping) {
+                    var row = $('<div/>').appendTo(container);
+                    row.css({
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        padding: '5px'
+                    });
+                    
+                    // Enabled checkbox
+                    var enabledCb = $('<input/>', {type: "checkbox", style: "width: 20px"})
+                        .prop('checked', mapping.enabled !== false)
+                        .appendTo(row);
+                    
+                    // Address (0x50-0x6F for 32 sensors)
+                    var addressSelect = $('<select/>', {style: "width: 80px"}).appendTo(row);
+                    for (var addr = 0x50; addr <= 0x6F; addr++) {
+                        addressSelect.append($('<option/>', {
+                            value: addr,
+                            text: '0x' + addr.toString(16).toUpperCase()
+                        }));
+                    }
+                    addressSelect.val(mapping.address || 0x50);
+                    
+                    // Equipment name
+                    var nameInput = $('<input/>', {
+                        type: "text",
+                        placeholder: "Equipment Name",
+                        style: "width: 180px"
+                    }).val(mapping.name || "").appendTo(row);
+                    
+                    // Equipment type
+                    var typeSelect = $('<select/>', {style: "width: 150px"}).appendTo(row);
+                    equipmentTypes.forEach(function(type) {
+                        typeSelect.append($('<option/>', {
+                            value: type.value,
+                            text: type.text
+                        }));
+                    });
+                    typeSelect.val(mapping.type || "MOTOR_GENERAL");
+                    
+                    // Power rating
+                    var powerContainer = $('<div/>', {style: "display: flex; gap: 5px"}).appendTo(row);
+                    var powerInput = $('<input/>', {
+                        type: "number",
+                        placeholder: "Power",
+                        style: "width: 60px"
+                    }).val(mapping.powerHP || mapping.powerKW || "").appendTo(powerContainer);
+                    
+                    var powerUnit = $('<select/>', {style: "width: 50px"}).appendTo(powerContainer);
+                    powerUnit.append($('<option/>', {value: "HP", text: "HP"}));
+                    powerUnit.append($('<option/>', {value: "KW", text: "kW"}));
+                    powerUnit.val(mapping.powerHP ? "HP" : "KW");
+                    
+                    // Foundation type
+                    var foundationSelect = $('<select/>', {style: "width: 80px"}).appendTo(row);
+                    foundationSelect.append($('<option/>', {value: "rigid", text: "Rigid"}));
+                    foundationSelect.append($('<option/>', {value: "soft", text: "Soft"}));
+                    foundationSelect.val(mapping.foundationType || "rigid");
+                    
+                    // Location
+                    var locationInput = $('<input/>', {
+                        type: "text",
+                        placeholder: "Location",
+                        style: "width: 150px"
+                    }).val(mapping.location || "").appendTo(row);
+                    
+                    // Advanced settings button
+                    var advancedBtn = $('<button/>', {
+                        type: "button",
+                        style: "width: 80px"
+                    }).text("Advanced").appendTo(row);
+                    
+                    // Store data
+                    container.data('mapping', {
+                        enabled: enabledCb,
+                        address: addressSelect,
+                        name: nameInput,
+                        type: typeSelect,
+                        powerInput: powerInput,
+                        powerUnit: powerUnit,
+                        foundation: foundationSelect,
+                        location: locationInput,
+                        rpmNominal: mapping.rpmNominal || 1800,
+                        customZones: mapping.customZones || null,
+                        alarmThresholds: mapping.alarmThresholds || null
+                    });
+                    
+                    // Advanced settings dialog
+                    advancedBtn.click(function() {
+                        var mapping = container.data('mapping');
+                        var dialog = $('<div/>');
+                        
+                        dialog.append('<h4>Equipment Settings</h4>');
+                        
+                        // Nominal RPM
+                        var rpmDiv = $('<div style="margin: 10px 0"/>').appendTo(dialog);
+                        rpmDiv.append('<label style="width: 120px; display: inline-block">Nominal RPM:</label>');
+                        var rpmInput = $('<input type="number" style="width: 100px" value="' + 
+                            mapping.rpmNominal + '"/>').appendTo(rpmDiv);
+                        
+                        dialog.append('<h4>Custom ISO Zones (mm/s)</h4>');
+                        dialog.append('<p style="font-size: 0.9em">Leave empty to use standard ISO 10816 zones based on power rating</p>');
+                        
+                        // Custom zones
+                        var zones = mapping.customZones || {};
+                        var zoneDiv = $('<div style="margin: 10px 0"/>').appendTo(dialog);
+                        ['A', 'B', 'C', 'D'].forEach(function(zone) {
+                            var zDiv = $('<div style="margin: 5px 0"/>').appendTo(zoneDiv);
+                            zDiv.append('<label style="width: 80px; display: inline-block">Zone ' + 
+                                zone + ':</label>');
+                            $('<input type="number" step="0.1" style="width: 80px" id="zone_' + 
+                                zone + '" value="' + (zones[zone] || '') + '"/>').appendTo(zDiv);
+                        });
+                        
+                        dialog.append('<h4>Custom Alarm Thresholds</h4>');
+                        
+                        // Alarm thresholds
+                        var alarms = mapping.alarmThresholds || {};
+                        var alarmDiv = $('<div style="margin: 10px 0"/>').appendTo(dialog);
+                        
+                        var vibDiv = $('<div style="margin: 5px 0"/>').appendTo(alarmDiv);
+                        vibDiv.append('<label style="width: 120px; display: inline-block">Vibration (mm/s):</label>');
+                        var vibInput = $('<input type="number" step="0.1" style="width: 80px" value="' + 
+                            (alarms.vibration || '') + '"/>').appendTo(vibDiv);
+                        
+                        var tempDiv = $('<div style="margin: 5px 0"/>').appendTo(alarmDiv);
+                        tempDiv.append('<label style="width: 120px; display: inline-block">Temperature (°C):</label>');
+                        var tempInput = $('<input type="number" style="width: 80px" value="' + 
+                            (alarms.temperature || '') + '"/>').appendTo(tempDiv);
+                        
+                        var accelDiv = $('<div style="margin: 5px 0"/>').appendTo(alarmDiv);
+                        accelDiv.append('<label style="width: 120px; display: inline-block">Acceleration (g):</label>');
+                        var accelInput = $('<input type="number" step="0.001" style="width: 80px" value="' + 
+                            (alarms.acceleration || '') + '"/>').appendTo(accelDiv);
+                        
+                        dialog.dialog({
+                            title: "Advanced Settings - " + (mapping.name.val() || "Sensor " + mapping.address.val()),
+                            modal: true,
+                            width: 400,
+                            buttons: {
+                                "OK": function() {
+                                    // Save RPM
+                                    mapping.rpmNominal = parseInt(rpmInput.val()) || 1800;
+                                    
+                                    // Save custom zones
+                                    var customZones = null;
+                                    var hasZones = false;
+                                    ['A', 'B', 'C', 'D'].forEach(function(zone) {
+                                        var val = parseFloat($('#zone_' + zone).val());
+                                        if (!isNaN(val) && val > 0) {
+                                            if (!customZones) customZones = {};
+                                            customZones[zone] = val;
+                                            hasZones = true;
+                                        }
+                                    });
+                                    mapping.customZones = hasZones ? customZones : null;
+                                    
+                                    // Save alarm thresholds
+                                    var alarmThresholds = null;
+                                    var vib = parseFloat(vibInput.val());
+                                    var temp = parseFloat(tempInput.val());
+                                    var accel = parseFloat(accelInput.val());
+                                    
+                                    if (!isNaN(vib) && vib > 0) {
+                                        if (!alarmThresholds) alarmThresholds = {};
+                                        alarmThresholds.vibration = vib;
+                                    }
+                                    if (!isNaN(temp) && temp > 0) {
+                                        if (!alarmThresholds) alarmThresholds = {};
+                                        alarmThresholds.temperature = temp;
+                                    }
+                                    if (!isNaN(accel) && accel > 0) {
+                                        if (!alarmThresholds) alarmThresholds = {};
+                                        alarmThresholds.acceleration = accel;
+                                    }
+                                    mapping.alarmThresholds = alarmThresholds;
+                                    
+                                    $(this).dialog("close");
+                                },
+                                "Cancel": function() {
+                                    $(this).dialog("close");
+                                }
+                            }
+                        });
+                    });
+                },
+                removable: true,
+                sortable: true
+            });
+            
+            // Load existing mappings
+            if (node.sensorMappings && node.sensorMappings.length > 0) {
+                node.sensorMappings.forEach(function(mapping) {
+                    $("#sensor-mapping-container").editableList('addItem', mapping);
+                });
+            } else {
+                // Add default mappings
+                $("#sensor-mapping-container").editableList('addItem', {
+                    enabled: true,
+                    address: 0x50,
+                    name: "Motor 1",
+                    type: "MOTOR_GENERAL"
+                });
+            }
+            
+            // Add new sensor button
+            $("#add-sensor-btn").click(function() {
+                var items = $("#sensor-mapping-container").editableList('items');
+                var nextAddr = 0x50 + items.length;
+                if (nextAddr <= 0x6F) {
+                    $("#sensor-mapping-container").editableList('addItem', {
+                        enabled: true,
+                        address: nextAddr,
+                        name: "Motor " + (items.length + 1),
+                        type: "MOTOR_GENERAL"
+                    });
+                } else {
+                    RED.notify("Maximum 32 sensors supported", "warning");
+                }
+            });
+        },
+        oneditsave: function() {
+            var node = this;
+            var mappings = [];
+            
+            $("#sensor-mapping-container").editableList('items').each(function() {
+                var data = $(this).data('mapping');
+                var powerHP = null, powerKW = null;
+                
+                if (data.powerInput.val()) {
+                    if (data.powerUnit.val() === "HP") {
+                        powerHP = parseFloat(data.powerInput.val());
+                    } else {
+                        powerKW = parseFloat(data.powerInput.val());
+                    }
+                }
+                
+                mappings.push({
+                    enabled: data.enabled.prop('checked'),
+                    address: parseInt(data.address.val()),
+                    name: data.name.val(),
+                    type: data.type.val(),
+                    powerHP: powerHP,
+                    powerKW: powerKW,
+                    foundationType: data.foundation.val(),
+                    location: data.location.val(),
+                    rpmNominal: data.rpmNominal,
+                    customZones: data.customZones,
+                    alarmThresholds: data.alarmThresholds
+                });
+            });
+            
+            node.sensorMappings = mappings;
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="industrial-vibration-parser">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="WTVB01-485 Parser">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-globalPrefix"><i class="fa fa-globe"></i> Global Prefix</label>
+        <input type="text" id="node-input-globalPrefix" placeholder="industrial">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-globalVars"><i class="fa fa-database"></i> Set Globals</label>
+        <input type="checkbox" id="node-input-globalVars" style="display: inline-block; width: auto; vertical-align: top;">
+        <label for="node-input-globalVars" style="width: auto;">Create global variables for sensor data</label>
+    </div>
+    
+    <div class="form-row">
+        <label><i class="fa fa-microchip"></i> Sensor Configuration</label>
+        <button type="button" id="add-sensor-btn" class="red-ui-button red-ui-button-small" style="float: right; margin-bottom: 5px;">
+            <i class="fa fa-plus"></i> Add Sensor
+        </button>
+    </div>
+    
+    <div class="form-row node-input-sensor-container-row">
+        <ol id="sensor-mapping-container" style="margin: 0; min-height: 100px">
+        </ol>
+    </div>
+    
+    <div class="form-tips" style="margin-top: 10px;">
+        <strong>WTVB01-485 Vibration Sensor Configuration</strong><br/>
+        <ul>
+            <li>Supports up to 32 sensors (addresses 0x50 to 0x6F)</li>
+            <li>Each sensor must have a unique RS485 address</li>
+            <li>ISO 10816 zones are automatically adjusted based on motor power rating</li>
+            <li>Measures: Velocity (0-50mm/s), Angle (0-180°), Displacement (0-30000μm), Temperature</li>
+            <li>Global variables created as: prefix_equipmenttype_address_parameter</li>
+        </ul>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="industrial-vibration-parser">
+    <p>Professional industrial vibration monitoring parser for WitMotion WTVB01-485 sensors.</p>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object | string</span></dt>
+        <dd>Raw sensor data from WTVB01-485 sensor containing vibration measurements</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">object</span></dt>
+        <dd>Parsed industrial equipment data with ISO classifications</dd>
+        <dt>topic <span class="property-type">string</span></dt>
+        <dd>Topic formatted as: prefix/equipment_type/sensor_address</dd>
+        <dt>alerts <span class="property-type">array</span></dt>
+        <dd>Array of active alerts and warnings</dd>
+    </dl>
+    
+    <h3>Details</h3>
+    <p>This node parses data from WTVB01-485 vibration sensors and provides:</p>
+    <ul>
+        <li><strong>Multi-sensor support:</strong> Up to 32 sensors on one RS485 bus</li>
+        <li><strong>Equipment types:</strong> Motors, pumps, fans, compressors, etc.</li>
+        <li><strong>ISO 10816 compliance:</strong> Automatic zone classification based on equipment power</li>
+        <li><strong>Power-aware thresholds:</strong> Different limits for different motor sizes</li>
+        <li><strong>Custom alarms:</strong> Set your own warning/critical thresholds</li>
+        <li><strong>Predictive maintenance:</strong> Estimated remaining useful life</li>
+    </ul>
+    
+    <h3>Global Variables</h3>
+    <p>When enabled, creates globals like:</p>
+    <ul>
+        <li><code>industrial_centrifugal_pump_80_temperature_c</code></li>
+        <li><code>industrial_centrifugal_pump_80_vibration_velocity</code></li>
+        <li><code>industrial_centrifugal_pump_80_iso_zone</code></li>
+        <li><code>industrial_centrifugal_pump_80_condition</code></li>
+        <li><code>industrial_centrifugal_pump_80_power_hp</code></li>
+    </ul>
+    
+    <h3>ISO 10816 Machine Classes</h3>
+    <ul>
+        <li><strong>Class I:</strong> Small machines &lt;15kW</li>
+        <li><strong>Class II:</strong> Medium machines 15-75kW</li>
+        <li><strong>Class III:</strong> Large machines &gt;75kW rigid foundation</li>
+        <li><strong>Class IV:</strong> Large machines &gt;75kW soft foundation</li>
+    </ul>
+    
+    <h3>WTVB01-485 Specifications</h3>
+    <ul>
+        <li>Vibration velocity: 0-50mm/s</li>
+        <li>Vibration angle: 0-180°</li>
+        <li>Vibration displacement: 0-30000μm</li>
+        <li>Temperature range: -20°C to 60°C</li>
+        <li>Cutoff frequency: 0-100Hz adjustable</li>
+        <li>Detection cycle: 1-100Hz</li>
+    </ul>
+</script>

@@ -1,0 +1,31 @@
+[
+    {
+        "id": "hvac-test",
+        "type": "inject",
+        "name": "AHU Test Data",
+        "payload": "[OK] 15:30:45.123 | Motor 0x50 | Accel: [+0.027, -0.030, -0.962]g | Temp: 78.4°F | RMS: 0.032g | Peak: 0.089g | Vel: 1.2mm/s | CF: 2.8 | Freq: 60.1Hz",
+        "payloadType": "str",
+        "x": 120,
+        "y": 100,
+        "wires": [["hvac-parser"]]
+    },
+    {
+        "id": "hvac-parser",
+        "type": "hvac-vibration-parser",
+        "name": "HVAC Monitor",
+        "outputFormat": "standard",
+        "globalVars": true,
+        "hvacPrefix": "hvac_motor",
+        "x": 320,
+        "y": 100,
+        "wires": [["hvac-debug"]]
+    },
+    {
+        "id": "hvac-debug",
+        "type": "debug",
+        "name": "HVAC Output",
+        "x": 520,
+        "y": 100,
+        "wires": []
+    }
+]
