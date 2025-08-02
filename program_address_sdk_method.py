@@ -43,8 +43,9 @@ def write_register_sdk_style(ser, address, register, value):
     
     # Calculate CRC
     tempCrc = calculate_crc16(tempBytes[:6])
-    tempBytes[6] = tempCrc >> 8
-    tempBytes[7] = tempCrc & 0xff
+    # SDK stores CRC low byte first, then high byte
+    tempBytes[6] = tempCrc & 0xff     # CRC low byte
+    tempBytes[7] = tempCrc >> 8       # CRC high byte
     
     print(f"Sending: {' '.join([f'{b:02X}' for b in tempBytes])}")
     response = send_command(ser, tempBytes)
