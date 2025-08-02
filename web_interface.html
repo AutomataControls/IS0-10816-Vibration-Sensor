@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutomataNexus Vibration Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .font-ultralight { font-weight: 200; }
+        body {
+            background: linear-gradient(135deg, #f0fffe 0%, #e6fffa 25%, #fef7ed 50%, #eff6ff 75%, #f0f9ff 100%);
+            min-height: 100vh;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            border-radius: 16px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        .status-dot.connected {
+            background: #10b981;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="font-ultralight">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="glass-card p-6 mb-8">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-ultralight text-gray-800">AutomataNexus Vibration Monitor</h1>
+                    <p class="text-gray-600">Enterprise Industrial Monitoring System</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="status-dot connected" id="connectionDot"></div>
+                    <span id="connectionStatus">Connected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="glass-card p-6 mb-8">
+            <div class="flex gap-4">
+                <button onclick="refreshData()" class="px-6 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600">
+                    🔄 Refresh
+                </button>
+                <button onclick="startMonitoring()" class="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600">
+                    ▶️ Start
+                </button>
+                <button onclick="stopMonitoring()" class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600">
+                    ⏹️ Stop
+                </button>
+            </div>
+        </div>
+
+        <!-- Sensor Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="sensorGrid">
+            <div class="glass-card p-6">
+                <p class="text-gray-600">Loading sensors...</p>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
+            <div class="glass-card p-6">
+                <h3 class="text-xl mb-4">Vibration Trend</h3>
+                <canvas id="vibrationChart" height="200"></canvas>
+            </div>
+            <div class="glass-card p-6">
+                <h3 class="text-xl mb-4">Temperature Trend</h3>
+                <canvas id="temperatureChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api';
+        let charts = {};
+
+        // Initialize charts
+        function initCharts() {
+            const chartConfig = {
+                type: 'line',
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            };
+
+            charts.vibration = new Chart(document.getElementById('vibrationChart'), {
+                ...chartConfig,
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'RMS Acceleration',
+                        data: [],
+                        borderColor: '#f97316',
+                        tension: 0.4
+                    }]
+                }
+            });
+
+            charts.temperature = new Chart(document.getElementById('temperatureChart'), {
+                ...chartConfig,
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Temperature',
+                        data: [],
+                        borderColor: '#0ea5e9',
+                        tension: 0.4
+                    }]
+                }
+            });
+        }
+
+        // Load sensor data
+        async function loadSensorData() {
+            try {
+                const response = await fetch(`${API_BASE}/readings`);
+                const data = await response.json();
+                displaySensors(data);
+                updateCharts(data);
+            } catch (error) {
+                console.error('Failed to load data:', error);
+            }
+        }
+
+        // Display sensors
+        function displaySensors(readings) {
+            const grid = document.getElementById('sensorGrid');
+            grid.innerHTML = '';
+
+            Object.entries(readings).forEach(([id, reading]) => {
+                const card = document.createElement('div');
+                card.className = 'glass-card p-6';
+                
+                const alertColor = {
+                    'NORMAL': 'green',
+                    'WARNING': 'yellow',
+                    'CRITICAL': 'orange',
+                    'EMERGENCY': 'red'
+                }[reading.alert_level] || 'gray';
+
+                card.innerHTML = `
+                    <h3 class="text-xl mb-4">${reading.name}</h3>
+                    <div class="space-y-2">
+                        <div class="flex justify-between">
+                            <span>Status:</span>
+                            <span class="text-${alertColor}-600 font-medium">${reading.alert_level}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Temperature:</span>
+                            <span>${reading.temperature_f.toFixed(1)}°F</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>RMS Accel:</span>
+                            <span>${reading.metrics.rms_acceleration.toFixed(4)}g</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Velocity:</span>
+                            <span>${reading.metrics.velocity_mms.toFixed(2)} mm/s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>ISO Zone:</span>
+                            <span class="font-medium">${reading.metrics.iso_zone}</span>
+                        </div>
+                    </div>
+                `;
+                
+                grid.appendChild(card);
+            });
+        }
+
+        // Update charts
+        function updateCharts(readings) {
+            const time = new Date().toLocaleTimeString();
+            
+            Object.values(readings).forEach((reading, idx) => {
+                if (idx === 0) { // Use first sensor for charts
+                    // Update vibration chart
+                    charts.vibration.data.labels.push(time);
+                    charts.vibration.data.datasets[0].data.push(reading.metrics.rms_acceleration);
+                    if (charts.vibration.data.labels.length > 20) {
+                        charts.vibration.data.labels.shift();
+                        charts.vibration.data.datasets[0].data.shift();
+                    }
+                    charts.vibration.update('none');
+
+                    // Update temperature chart
+                    charts.temperature.data.labels.push(time);
+                    charts.temperature.data.datasets[0].data.push(reading.temperature_f);
+                    if (charts.temperature.data.labels.length > 20) {
+                        charts.temperature.data.labels.shift();
+                        charts.temperature.data.datasets[0].data.shift();
+                    }
+                    charts.temperature.update('none');
+                }
+            });
+        }
+
+        // Control functions
+        async function startMonitoring() {
+            await fetch(`${API_BASE}/control/start`, { method: 'POST' });
+            alert('Monitoring started');
+        }
+
+        async function stopMonitoring() {
+            await fetch(`${API_BASE}/control/stop`, { method: 'POST' });
+            alert('Monitoring stopped');
+        }
+
+        function refreshData() {
+            loadSensorData();
+        }
+
+        // Initialize
+        initCharts();
+        loadSensorData();
+        
+        // Auto-refresh every 2 seconds
+        setInterval(loadSensorData, 2000);
+    </script>
+</body>
+</html>
