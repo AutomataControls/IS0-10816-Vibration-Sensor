@@ -1,0 +1,208 @@
+[
+    {
+        "id": "test-flow-1",
+        "type": "tab",
+        "label": "AutomataNexus Vibration Test",
+        "disabled": false,
+        "info": "Test flow for AutomataNexus Industrial Vibration Parser v2.1.0"
+    },
+    {
+        "id": "inject-1",
+        "type": "inject",
+        "z": "test-flow-1",
+        "name": "Cooling Tower 1 - Normal",
+        "props": [
+            {
+                "p": "payload",
+                "v": "[OK] 10:01:35 | Cooling_Tower_1 | RMS: 0.0246g | Velocity: 1.28mm/s | ISO Zone: A | Temp: 77.0°F",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 100,
+        "wires": [["parser-1"]]
+    },
+    {
+        "id": "inject-2",
+        "type": "inject",
+        "z": "test-flow-1",
+        "name": "Cooling Tower 2 - Warning",
+        "props": [
+            {
+                "p": "payload",
+                "v": "[WARN] 10:02:45 | Cooling_Tower_2 | RMS: 0.1856g | Velocity: 5.82mm/s | ISO Zone: C | Temp: 85.5°F",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 160,
+        "wires": [["parser-1"]]
+    },
+    {
+        "id": "inject-3",
+        "type": "inject",
+        "z": "test-flow-1",
+        "name": "Chiller Pump - Critical",
+        "props": [
+            {
+                "p": "payload",
+                "v": "[CRIT] 10:03:22 | Chiller_Pump_1 | RMS: 0.4521g | Velocity: 15.3mm/s | ISO Zone: D | Temp: 195.0°F",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 140,
+        "y": 220,
+        "wires": [["parser-1"]]
+    },
+    {
+        "id": "inject-4",
+        "type": "inject",
+        "z": "test-flow-1",
+        "name": "API JSON Format",
+        "props": [
+            {
+                "p": "payload",
+                "vt": "json",
+                "v": "{\"timestamp\":\"2025-08-02T10:05:00\",\"equipment_name\":\"Air_Handler_Unit_1\",\"equipment_type\":\"HVAC_FAN\",\"temperature_f\":82.5,\"acceleration\":{\"x\":0.023,\"y\":0.045,\"z\":0.012},\"rms_acceleration\":0.028,\"velocity_mms\":1.45,\"iso_zone\":\"A\",\"alert_level\":\"NORMAL\"}"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 130,
+        "y": 280,
+        "wires": [["parser-1"]]
+    },
+    {
+        "id": "inject-5",
+        "type": "inject",
+        "z": "test-flow-1",
+        "name": "Old Format (Address)",
+        "props": [
+            {
+                "p": "payload",
+                "v": "[OK] Sensor 0x50 | RMS: 0.0156g | Vel: 0.85mm/s | Temp: 75.0°F",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 140,
+        "y": 340,
+        "wires": [["parser-1"]]
+    },
+    {
+        "id": "parser-1",
+        "type": "industrial-vibration-parser",
+        "z": "test-flow-1",
+        "name": "Vibration Parser",
+        "outputFormat": "standard",
+        "globalVars": true,
+        "globalPrefix": "industrial",
+        "sensorMappings": [
+            {
+                "address": "80",
+                "enabled": true,
+                "name": "Test_Sensor_80",
+                "type": "MOTOR_GENERAL",
+                "location": "Test Lab",
+                "powerHP": 50,
+                "foundationType": "rigid",
+                "rpmNominal": 1800
+            }
+        ],
+        "x": 440,
+        "y": 220,
+        "wires": [["debug-1", "dashboard-1"]]
+    },
+    {
+        "id": "debug-1",
+        "type": "debug",
+        "z": "test-flow-1",
+        "name": "Parsed Output",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 660,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "dashboard-1",
+        "type": "function",
+        "z": "test-flow-1",
+        "name": "Format for Dashboard",
+        "func": "// Extract key metrics for dashboard display\nlet data = msg.payload;\n\nlet dashboardData = {\n    equipment: data.equipment_name,\n    type: data.equipment_type,\n    location: data.equipment_location,\n    \n    // Status\n    condition: data.equipment_condition,\n    iso_zone: data.iso_zone,\n    maintenance_priority: data.maintenance_priority,\n    \n    // Measurements\n    temperature_f: data.temperature.fahrenheit,\n    temperature_c: data.temperature.celsius,\n    vibration_velocity: data.vibration.velocity_mms,\n    rms_acceleration: data.vibration.rms_acceleration_g,\n    \n    // Alerts\n    alert_count: data.alerts.length,\n    alerts: data.alerts,\n    \n    // Estimated remaining life\n    rul_days: data.estimated_rul_days\n};\n\n// Set topic for MQTT or dashboard routing\nmsg.topic = `vibration/${data.equipment_type.toLowerCase()}/${data.equipment_name.toLowerCase()}`;\nmsg.payload = dashboardData;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 680,
+        "y": 260,
+        "wires": [["debug-2"]]
+    },
+    {
+        "id": "debug-2",
+        "type": "debug",
+        "z": "test-flow-1",
+        "name": "Dashboard Format",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 890,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "comment-1",
+        "type": "comment",
+        "z": "test-flow-1",
+        "name": "Test Different Input Formats",
+        "info": "This flow tests the parser with:\n1. New equipment name format from multi-port monitor\n2. Different alert levels (OK, WARN, CRIT)\n3. JSON API format\n4. Old sensor address format\n\nThe parser should handle all formats and output standardized industrial data.",
+        "x": 160,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "comment-2",
+        "type": "comment",
+        "z": "test-flow-1",
+        "name": "Global Variables",
+        "info": "When globalVars is enabled, the parser sets:\n- industrial_cooling_tower_<id>_temperature_f\n- industrial_cooling_tower_<id>_vibration_velocity\n- industrial_cooling_tower_<id>_iso_zone\n- industrial_cooling_tower_<id>_condition\n- etc.",
+        "x": 440,
+        "y": 160,
+        "wires": []
+    }
+]

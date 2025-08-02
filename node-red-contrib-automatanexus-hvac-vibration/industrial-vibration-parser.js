@@ -229,10 +229,40 @@ module.exports = function(RED) {
             let alertMatch = text.match(/\[(OK|WARN|CRIT|EMRG)\]/);
             if (alertMatch) data.alert_level = alertMatch[1];
             
-            // Extract sensor address - support multiple formats
-            let addressMatch = text.match(/(?:Sensor|Motor|Address)\s*0x([0-9A-F]+)/i);
-            if (addressMatch) {
-                data.sensor_address = parseInt(addressMatch[1], 16);
+            // Extract timestamp if present
+            let timeMatch = text.match(/(\d{2}:\d{2}:\d{2})/);
+            if (timeMatch) data.timestamp_str = timeMatch[1];
+            
+            // Extract equipment name (new format) or sensor address (old format)
+            // New format: [OK] 10:01:35 | Cooling_Tower_1 | RMS: ...
+            // Old format: [OK] Sensor 0x50 | RMS: ...
+            let parts = text.split('|').map(p => p.trim());
+            if (parts.length >= 2) {
+                let sensorPart = parts[1];
+                
+                // Check if it's an address format
+                let addressMatch = sensorPart.match(/(?:Sensor|Motor|Address|TTYUSB\d+)\s*(?:0x([0-9A-F]+))?/i);
+                if (addressMatch && addressMatch[1]) {
+                    data.sensor_address = parseInt(addressMatch[1], 16);
+                } else if (sensorPart.match(/TTYUSB(\d+)/i)) {
+                    // Handle TTYUSB format
+                    let usbMatch = sensorPart.match(/TTYUSB(\d+)/i);
+                    data.sensor_port = `TTYUSB${usbMatch[1]}`;
+                    data.equipment_name = sensorPart; // May be overridden if actual name found
+                } else {
+                    // It's likely an equipment name
+                    data.equipment_name = sensorPart;
+                    // Try to extract equipment type from name
+                    if (sensorPart.toLowerCase().includes('cooling_tower')) {
+                        data.equipment_type = 'COOLING_TOWER';
+                    } else if (sensorPart.toLowerCase().includes('pump')) {
+                        data.equipment_type = 'CENTRIFUGAL_PUMP';
+                    } else if (sensorPart.toLowerCase().includes('compressor')) {
+                        data.equipment_type = 'SCREW_COMPRESSOR';
+                    } else if (sensorPart.toLowerCase().includes('fan')) {
+                        data.equipment_type = 'HVAC_FAN';
+                    }
+                }
             }
             
             // Extract temperature
@@ -246,8 +276,8 @@ module.exports = function(RED) {
                 }
             }
             
-            // Extract vibration velocity
-            let velMatch = text.match(/Vel:\s*([+-]?\d+(?:\.\d+)?)\s*mm\/s/i);
+            // Extract vibration velocity (supports both "Vel:" and "Velocity:")
+            let velMatch = text.match(/(?:Vel|Velocity):\s*([+-]?\d+(?:\.\d+)?)\s*mm\/s/i);
             if (velMatch) data.vibration_velocity = parseFloat(velMatch[1]);
             
             // Extract RMS acceleration
@@ -259,7 +289,7 @@ module.exports = function(RED) {
             if (freqMatch) data.frequency = parseFloat(freqMatch[1]);
             
             // Extract ISO zone if present
-            let zoneMatch = text.match(/Zone:\s*([A-D])/i);
+            let zoneMatch = text.match(/(?:ISO\s*)?Zone:\s*([A-D])/i);
             if (zoneMatch) data.iso_zone = zoneMatch[1];
             
             return data;
@@ -274,16 +304,31 @@ module.exports = function(RED) {
                 rawData.sensor_address = rawData.motor_id;
             }
             
-            if (!rawData.sensor_address) return null;
+            // If we have equipment_name but no sensor_address, create a pseudo-address
+            if (!rawData.sensor_address && rawData.equipment_name) {
+                // Use a hash of the equipment name as address for consistency
+                let hash = 0;
+                for (let i = 0; i < rawData.equipment_name.length; i++) {
+                    hash = ((hash << 5) - hash) + rawData.equipment_name.charCodeAt(i);
+                    hash = hash & hash; // Convert to 32bit integer
+                }
+                rawData.sensor_address = Math.abs(hash) % 256; // Keep it in byte range
+            }
+            
+            if (!rawData.sensor_address && !rawData.equipment_name) return null;
             
             // Get sensor configuration
             let sensorConfig = node.sensorMap[rawData.sensor_address] || {
-                name: `Sensor_${rawData.sensor_address}`,
-                type: "MOTOR_GENERAL",
+                name: rawData.equipment_name || `Sensor_${rawData.sensor_address}`,
+                type: rawData.equipment_type || "MOTOR_GENERAL",
                 location: "Unknown",
                 powerKW: 30, // Default 30kW if not specified
                 foundationType: "rigid"
             };
+            
+            // Override with data from the message if available
+            if (rawData.equipment_name) sensorConfig.name = rawData.equipment_name;
+            if (rawData.equipment_type) sensorConfig.type = rawData.equipment_type;
             
             // Get equipment type configuration
             let equipmentStandard = ISO_STANDARDS[sensorConfig.type] || ISO_STANDARDS["MOTOR_GENERAL"];
