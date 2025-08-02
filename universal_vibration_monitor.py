@@ -1034,16 +1034,16 @@ def scan_sensors():
                     'active': True
                 })
     else:
-        # If not running, we can actually scan
-        for addr in range(0x50, 0x70):
-            if addr not in [s.address for s in monitor_instance.config.sensors]:
-                if monitor_instance.test_sensor_connection(addr):
-                    found_sensors.append({
-                        'address': addr,
-                        'configured': False,
-                        'name': f'Sensor_{addr:02X}',
-                        'active': False
-                    })
+        # If not running, just show configured sensors
+        # We can't scan because the serial port might be closed
+        pass
+    
+    # Add a note if monitoring is stopped
+    if not monitor_instance.running and len(found_sensors) == 0:
+        return jsonify({
+            'error': 'No sensors configured. Start monitoring with at least one sensor first.',
+            'sensors': []
+        })
     
     return jsonify(found_sensors)
 
@@ -1181,9 +1181,9 @@ def serve_web_interface():
                 
                 <div class="mb-6">
                     <h3 class="text-lg mb-3">Detected Sensors</h3>
-                    <p class="text-sm text-gray-600 mb-2">Note: Stop monitoring to scan for new sensors on other addresses</p>
+                    <p class="text-sm text-gray-600 mb-2">Currently monitoring address 0x50. If you have multiple sensors at 0x50, program them to unique addresses below.</p>
                     <div id="detectedSensors" class="space-y-2">
-                        <p class="text-gray-600">Scanning...</p>
+                        <p class="text-gray-600">Loading...</p>
                     </div>
                 </div>
 
@@ -1462,7 +1462,32 @@ def serve_web_interface():
         // Configuration functions
         function openConfig() {
             document.getElementById('configModal').classList.remove('hidden');
-            scanSensors();
+            // Show current sensor status
+            showCurrentSensors();
+        }
+        
+        function showCurrentSensors() {
+            const sensorsDiv = document.getElementById('detectedSensors');
+            sensorsDiv.innerHTML = `
+                <div class="space-y-3">
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded">
+                        <p class="font-medium text-blue-800">Current Setup:</p>
+                        <p class="text-sm text-blue-700">1 sensor detected at address 0x50 (default)</p>
+                    </div>
+                    <div class="p-3 bg-amber-50 border border-amber-200 rounded">
+                        <p class="font-medium text-amber-800">Multiple Sensors at 0x50?</p>
+                        <p class="text-sm text-amber-700">If you have 3 sensors, they're likely all at address 0x50.</p>
+                        <p class="text-sm text-amber-700 mt-1">Program them one at a time:</p>
+                        <ol class="text-sm text-amber-700 ml-4 mt-1 list-decimal">
+                            <li>Disconnect 2 sensors, leave only 1 connected</li>
+                            <li>Program it to 0x51 using the form below</li>
+                            <li>Disconnect that sensor, connect the next one</li>
+                            <li>Program it to 0x52</li>
+                            <li>Connect all 3 sensors and restart monitoring</li>
+                        </ol>
+                    </div>
+                </div>
+            `;
         }
 
         function closeConfig() {
@@ -1475,11 +1500,14 @@ def serve_web_interface():
             
             try {
                 const response = await fetch(`${API_BASE}/scan`);
-                const sensors = await response.json();
+                const data = await response.json();
                 
-                if (sensors.length === 0) {
+                if (data.error) {
+                    sensorsDiv.innerHTML = `<p class="text-amber-600">${data.error}</p>`;
+                } else if (data.length === 0) {
                     sensorsDiv.innerHTML = '<p class="text-gray-600">No sensors found</p>';
                 } else {
+                    const sensors = data;
                     sensorsDiv.innerHTML = sensors.map(sensor => `
                         <div class="flex justify-between items-center p-3 bg-gray-100 rounded">
                             <div>
