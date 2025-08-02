@@ -448,15 +448,23 @@ class WT901CMultiSensor:
         cmd.append(crc & 0xFF)
         cmd.append((crc >> 8) & 0xFF)
         
+        print(f"Writing to sensor 0x{sensor_address:02X}, register 0x{register:04X}, value 0x{value:04X}")
+        print(f"Command: {' '.join([f'{b:02X}' for b in cmd])}")
+        
         try:
             self.serial_conn.reset_input_buffer()
             self._send_command(bytes(cmd))
             time.sleep(0.1)
             
             response = self.serial_conn.read(8)
+            print(f"Response ({len(response)} bytes): {' '.join([f'{b:02X}' for b in response])}")
+            
             if len(response) >= 8 and response[0] == sensor_address and response[1] == 0x06:
+                print("Write successful")
                 return True
-            return False
+            else:
+                print("Write failed - invalid response")
+                return False
         except Exception as e:
             print(f"Write register error: {e}")
             return False
@@ -840,12 +848,16 @@ class UniversalVibrationMonitor:
             print(f"Programming WTVB01-485 from 0x{current_address:02X} to 0x{new_address:02X}")
             
             # WTVB01-485 specific programming sequence
-            # According to the manual:
-            # 1. Unlock: Write 0xB588 to register 0x69
+            # Try different unlock methods
+            # Method 1: Standard WitMotion unlock (0xB588 to 0x69)
             print("Step 1: Unlocking configuration...")
+            print("Trying unlock method 1: 0xB588 to register 0x69")
             if not self.sensor_manager.write_register(current_address, 0x69, 0xB588):
-                print("Failed to unlock")
-                return False
+                print("Method 1 failed, trying method 2: 0xB588 to register 0x8B")
+                # Some WitMotion sensors use register 0x8B for unlock
+                if not self.sensor_manager.write_register(current_address, 0x8B, 0xB588):
+                    print("Both unlock methods failed")
+                    return False
             time.sleep(0.2)
             
             # 2. Write new address to register 0x1A (device address register)
