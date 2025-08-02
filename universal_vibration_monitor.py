@@ -867,22 +867,30 @@ class UniversalVibrationMonitor:
                 return False
             time.sleep(0.2)
             
-            # 3. Save to flash - Try different save methods
+            # 3. Save to flash - WTVB01-485 specific save sequence
             print("Step 3: Saving configuration to flash...")
             
-            # Method 1: Write 0x0000 to register 0x00 (standard WitMotion)
+            # For WTVB01-485, try different save methods:
+            # Method 1: Save command register 0x00 with 0x0000
+            print("Trying save method 1: 0x0000 to register 0x00")
             success = self.sensor_manager.write_register(current_address, 0x00, 0x0000)
+            
             if not success:
-                print("Standard save didn't respond - trying alternate method")
-                # Method 2: Write 0x0001 to register 0x00 (some sensors need this)
-                success = self.sensor_manager.write_register(current_address, 0x00, 0x0001)
+                print("Method 1 no response - trying method 2: Save to register 0x1F")
+                # Method 2: Some WitMotion sensors use register 0x1F
+                success = self.sensor_manager.write_register(current_address, 0x1F, 0x0000)
+            
+            if not success:
+                print("Method 2 no response - trying method 3: Reboot command")
+                # Method 3: Send reboot command (0xFF to register 0x00)
+                success = self.sensor_manager.write_register(current_address, 0x00, 0x00FF)
             
             # Even if no response, the save might have worked (sensor resets)
             if not success:
-                print("No response from save command - sensor may have reset")
-                print("This is normal for some sensors")
+                print("No response from any save command - sensor may have reset")
+                print("This is expected behavior for some sensors")
             
-            time.sleep(2.0)  # Give more time for sensor to reset
+            time.sleep(3.0)  # Give more time for sensor to reset and reload
             
             # Note: After saving, the sensor should restart with the new address
             # The old address will no longer respond
