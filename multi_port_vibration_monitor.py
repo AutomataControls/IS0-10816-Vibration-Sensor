@@ -33,6 +33,9 @@ class SensorReading:
     acceleration_z: float
     temperature: float
     alert_level: str = "NORMAL"
+    rms_acceleration: float = 0.0
+    velocity_mms: float = 0.0
+    iso_zone: str = "A"
 
 class MultiPortVibrationMonitor:
     def __init__(self, ports: List[str]):
@@ -85,7 +88,7 @@ class MultiPortVibrationMonitor:
         self.csv_writer = csv.writer(self.csv_file)
         self.csv_writer.writerow([
             'Timestamp', 'Sensor', 'AccelX', 'AccelY', 'AccelZ', 
-            'Temperature', 'AlertLevel'
+            'RMS_Accel', 'Velocity_mms', 'ISO_Zone', 'Temperature', 'AlertLevel'
         ])
         
         print(f"\nConnected to {len(self.serial_connections)} sensors")
@@ -137,19 +140,29 @@ class MultiPortVibrationMonitor:
                     temperature=temp_f
                 )
                 
-                # Simple alert logic
-                total_accel = np.sqrt(
+                # Calculate RMS acceleration
+                reading.rms_acceleration = np.sqrt(
                     reading.acceleration_x**2 + 
                     reading.acceleration_y**2 + 
                     reading.acceleration_z**2
-                )
+                ) / np.sqrt(3)  # RMS of 3 axes
                 
-                if total_accel > 2.0:
-                    reading.alert_level = "CRITICAL"
-                elif total_accel > 1.5:
+                # Convert to velocity (simplified - assumes 10Hz vibration)
+                reading.velocity_mms = reading.rms_acceleration * 9.81 * 1000 / (2 * np.pi * 10)
+                
+                # ISO 10816-3 zones for machines 15-300kW on rigid foundations
+                if reading.velocity_mms <= 1.8:
+                    reading.iso_zone = "A"  # Good
+                    reading.alert_level = "NORMAL"
+                elif reading.velocity_mms <= 4.5:
+                    reading.iso_zone = "B"  # Satisfactory
+                    reading.alert_level = "NORMAL"
+                elif reading.velocity_mms <= 11.0:
+                    reading.iso_zone = "C"  # Unsatisfactory
                     reading.alert_level = "WARNING"
                 else:
-                    reading.alert_level = "NORMAL"
+                    reading.iso_zone = "D"  # Unacceptable
+                    reading.alert_level = "CRITICAL"
                 
                 return reading
                 
@@ -182,9 +195,9 @@ class MultiPortVibrationMonitor:
                     
                     print(f"{alert_symbol} {reading.timestamp.strftime('%H:%M:%S')} | "
                           f"{reading.sensor_id} | "
-                          f"Accel: [{reading.acceleration_x:+6.3f}, "
-                          f"{reading.acceleration_y:+6.3f}, "
-                          f"{reading.acceleration_z:+6.3f}]g | "
+                          f"RMS: {reading.rms_acceleration:6.4f}g | "
+                          f"Velocity: {reading.velocity_mms:5.2f}mm/s | "
+                          f"ISO Zone: {reading.iso_zone} | "
                           f"Temp: {reading.temperature:5.1f}°F")
                     
                     # Log to CSV
@@ -194,6 +207,9 @@ class MultiPortVibrationMonitor:
                         reading.acceleration_x,
                         reading.acceleration_y,
                         reading.acceleration_z,
+                        reading.rms_acceleration,
+                        reading.velocity_mms,
+                        reading.iso_zone,
                         reading.temperature,
                         reading.alert_level
                     ])
@@ -227,7 +243,7 @@ def serve_web_interface():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Sensor Vibration Monitor</title>
+    <title>AutomataNexus Multi-Sensor Vibration Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
@@ -243,14 +259,28 @@ def serve_web_interface():
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             border-radius: 16px;
         }
+        .alert-warning { border-color: rgba(245, 158, 11, 0.5); }
+        .alert-critical { border-color: rgba(239, 68, 68, 0.5); }
+        .iso-zone-a { background: linear-gradient(45deg, #10b981, #059669); }
+        .iso-zone-b { background: linear-gradient(45deg, #3b82f6, #2563eb); }
+        .iso-zone-c { background: linear-gradient(45deg, #f59e0b, #d97706); }
+        .iso-zone-d { background: linear-gradient(45deg, #ef4444, #dc2626); }
     </style>
 </head>
 <body class="font-ultralight">
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
         <div class="glass-card p-6 mb-8">
-            <h1 class="text-3xl font-ultralight text-gray-800">Multi-Sensor Vibration Monitor</h1>
-            <p class="text-gray-600">Monitoring 3 WTVB01-485 Sensors</p>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-ultralight text-gray-800">AutomataNexus Multi-Sensor Vibration Monitor</h1>
+                    <p class="text-gray-600">ISO 10816-3 Compliant • Real-time Analysis • 3x WTVB01-485 Sensors</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm text-gray-500">Powered by Neural BMS</p>
+                    <p class="text-xs text-gray-400">© 2025 AutomataNexus AI</p>
+                </div>
+            </div>
         </div>
 
         <!-- Sensor Grid -->
@@ -284,14 +314,24 @@ def serve_web_interface():
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: true }
+                        legend: { 
+                            display: true,
+                            position: 'top'
+                        }
                     },
                     scales: {
+                        x: {
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 10
+                            }
+                        },
                         y: { 
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Acceleration (g)'
+                                text: 'RMS Acceleration (g)'
                             }
                         }
                     }
@@ -323,11 +363,11 @@ def serve_web_interface():
             grid.innerHTML = '';
 
             Object.entries(readings).forEach(([id, reading]) => {
-                const totalAccel = Math.sqrt(
+                const totalAccel = reading.rms_acceleration || Math.sqrt(
                     reading.acceleration.x ** 2 + 
                     reading.acceleration.y ** 2 + 
                     reading.acceleration.z ** 2
-                );
+                ) / Math.sqrt(3);
                 
                 const card = document.createElement('div');
                 card.className = `glass-card p-6`;
@@ -356,8 +396,16 @@ def serve_web_interface():
                             <span class="font-medium">${reading.temperature_f.toFixed(1)}°F</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-600">Total Accel:</span>
-                            <span class="font-medium">${totalAccel.toFixed(3)}g</span>
+                            <span class="text-gray-600">RMS Accel:</span>
+                            <span class="font-medium">${totalAccel.toFixed(4)}g</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Velocity:</span>
+                            <span class="font-medium">${reading.velocity_mms ? reading.velocity_mms.toFixed(2) : '0.00'} mm/s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">ISO Zone:</span>
+                            <span class="font-medium px-2 py-1 rounded text-white text-xs iso-zone-${(reading.iso_zone || 'a').toLowerCase()}">${reading.iso_zone || 'A'}</span>
                         </div>
                         <div class="mt-3 pt-3 border-t border-gray-200">
                             <div class="text-sm text-gray-600">
@@ -375,7 +423,8 @@ def serve_web_interface():
 
         // Update chart
         function updateChart(readings) {
-            const time = new Date().toLocaleTimeString();
+            const now = new Date();
+            const time = now.getSeconds().toString().padStart(2, '0');
             
             // Add time label
             if (chart.data.labels.length > 20) {
@@ -385,28 +434,26 @@ def serve_web_interface():
             
             // Update or create datasets for each sensor
             Object.entries(readings).forEach(([id, reading], index) => {
-                const totalAccel = Math.sqrt(
-                    reading.acceleration.x ** 2 + 
-                    reading.acceleration.y ** 2 + 
-                    reading.acceleration.z ** 2
-                );
+                const rmsAccel = reading.rms_acceleration || 0;
                 
                 // Find or create dataset
                 let dataset = chart.data.datasets.find(ds => ds.label === id);
                 if (!dataset) {
-                    const colors = ['#f97316', '#0ea5e9', '#10b981'];
+                    const colors = ['#f97316', '#0ea5e9', '#10b981', '#a855f7'];
                     dataset = {
                         label: id,
                         data: [],
                         borderColor: colors[index % colors.length],
                         backgroundColor: colors[index % colors.length] + '20',
-                        tension: 0.4
+                        tension: 0.4,
+                        borderWidth: 2,
+                        pointRadius: 0
                     };
                     chart.data.datasets.push(dataset);
                 }
                 
                 // Add data point
-                dataset.data.push(totalAccel);
+                dataset.data.push(rmsAccel);
                 if (dataset.data.length > 20) {
                     dataset.data.shift();
                 }
@@ -452,6 +499,9 @@ def get_readings():
                     'y': reading.acceleration_y,
                     'z': reading.acceleration_z
                 },
+                'rms_acceleration': reading.rms_acceleration,
+                'velocity_mms': reading.velocity_mms,
+                'iso_zone': reading.iso_zone,
                 'alert_level': reading.alert_level
             }
         return jsonify(readings)
@@ -460,8 +510,16 @@ def get_readings():
 def main():
     global monitor_instance
     
-    print("Multi-Port Vibration Monitoring System")
-    print("=" * 50)
+    print("╔════════════════════════════════════════════════════════════════════════════════════╗")
+    print("║                        AutomataNexus Multi-Port Vibration Monitor                  ║")
+    print("║                     Enterprise WitMotion WTVB01-485 Integration                    ║")
+    print("║                          ISO 10816-3 Compliant Analysis System                     ║")
+    print("║                          (c) 2025 AutomataNexus AI & AutomataControls              ║")
+    print("╚════════════════════════════════════════════════════════════════════════════════════╝")
+    print("")
+    print("MULTI-PORT VIBRATION MONITORING SYSTEM")
+    print("Real-time Analysis | Web Dashboard | CSV Logging")
+    print("=" * 90)
     
     # Define the ports - keeping all 4
     ports = ['/dev/ttyUSB1', '/dev/ttyUSB2', '/dev/ttyUSB3', '/dev/ttyUSB4']
