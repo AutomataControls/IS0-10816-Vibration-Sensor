@@ -184,7 +184,7 @@
 
         async function loadSensorData() {
             try {
-                const response = await fetch(`${API_BASE}/data`);
+                const response = await fetch(`${API_BASE}/readings`);
                 const data = await response.json();
                 
                 document.getElementById('connection-status').className = 'status online';
@@ -231,31 +231,38 @@
 
         async function loadConfig() {
             try {
-                const response = await fetch(`${API_BASE}/equipment_config`);
-                const config = await response.json();
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
                 
                 const container = document.getElementById('config-list');
                 
-                if (Object.keys(config).length === 0) {
-                    container.innerHTML = '<div style="color: #666;"><p>No configurations found. Click "Scan for USB Ports" to detect sensors.</p></div>';
+                if (!status.sensors || status.sensors.length === 0) {
+                    container.innerHTML = '<div style="color: #666;"><p>No sensors detected. Check USB connections.</p></div>';
                     return;
                 }
                 
-                container.innerHTML = Object.entries(config).map(([port, cfg]) => `
+                // Show configuration forms for unconfigured sensors
+                if (!status.configured) {
+                    container.innerHTML = '<div style="color: #666;"><p>Please use the Flask web interface at http://localhost:5000 to configure sensors.</p></div>';
+                    return;
+                }
+                
+                // Show configured sensors
+                container.innerHTML = status.sensors.filter(s => s.configured).map(sensor => `
                     <div class="sensor-card">
-                        <h3>${cfg.equipment_name}</h3>
-                        <p style="color: #666; margin-bottom: 0.5rem;">${port}</p>
+                        <h3>${sensor.name}</h3>
+                        <p style="color: #666; margin-bottom: 0.5rem;">${sensor.port}</p>
                         <div class="metric">
                             <span>Type</span>
-                            <span>${cfg.equipment_type.replace(/_/g, ' ')}</span>
+                            <span>${sensor.type.replace(/_/g, ' ')}</span>
                         </div>
                         <div class="metric">
                             <span>Power</span>
-                            <span>${cfg.hp} HP</span>
+                            <span>${sensor.hp} HP</span>
                         </div>
                         <div class="metric">
                             <span>Voltage</span>
-                            <span>${cfg.voltage}V ${cfg.phase}φ</span>
+                            <span>${sensor.voltage}V ${sensor.phase}φ</span>
                         </div>
                     </div>
                 `).join('');
@@ -266,19 +273,19 @@
 
         async function scanPorts() {
             try {
-                const response = await fetch(`${API_BASE}/scan_ports`);
-                const data = await response.json();
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
                 
-                if (data.ports.length === 0) {
-                    alert('No USB ports found. Check connections.');
+                if (!status.sensors || status.sensors.length === 0) {
+                    alert('No sensors detected. Check USB connections.');
                     return;
                 }
                 
                 const container = document.getElementById('config-list');
-                container.innerHTML = data.ports.map(port => `
+                container.innerHTML = status.sensors.map(sensor => `
                     <div class="sensor-card">
-                        <h3>${port}</h3>
-                        <form onsubmit="saveConfig('${port}', event)">
+                        <h3>${sensor.port}</h3>
+                        <form onsubmit="saveConfig('${sensor.port}', event)">
                             <div class="form-group">
                                 <label>Equipment Name</label>
                                 <input type="text" name="equipment_name" required placeholder="e.g., Cooling_Tower_1">
@@ -288,8 +295,12 @@
                                 <select name="equipment_type" required>
                                     <option value="cooling_tower_motor">Cooling Tower Motor</option>
                                     <option value="centrifugal_pump">Centrifugal Pump</option>
+                                    <option value="reciprocating_compressor">Reciprocating Compressor</option>
+                                    <option value="screw_compressor">Screw Compressor</option>
+                                    <option value="scroll_compressor">Scroll Compressor</option>
+                                    <option value="circulation_pump">Circulation Pump</option>
                                     <option value="fan_motor">Fan Motor</option>
-                                    <option value="general_motor">General Motor</option>
+                                    <option value="general_motor">General Purpose Motor</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -337,18 +348,18 @@
             };
             
             try {
-                const response = await fetch(`${API_BASE}/save_equipment_config`, {
+                const response = await fetch(`${API_BASE}/configure`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
                 const result = await response.json();
                 
-                if (result.status === 'success') {
+                if (result.success) {
                     alert('Configuration saved!');
                     loadConfig();
                 } else {
-                    alert('Error saving configuration');
+                    alert('Error saving configuration: ' + (result.error || result.message));
                 }
             } catch (error) {
                 alert('Error: ' + error.message);
@@ -357,7 +368,7 @@
 
         async function startMonitoring() {
             try {
-                const response = await fetch(`${API_BASE}/start`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/monitoring/start`, { method: 'POST' });
                 const result = await response.json();
                 document.getElementById('control-status').innerHTML = '<p style="color: #28a745;">Monitoring started successfully!</p>';
             } catch (error) {
@@ -367,7 +378,7 @@
 
         async function stopMonitoring() {
             try {
-                const response = await fetch(`${API_BASE}/stop`, { method: 'POST' });
+                const response = await fetch(`${API_BASE}/monitoring/stop`, { method: 'POST' });
                 const result = await response.json();
                 document.getElementById('control-status').innerHTML = '<p style="color: #ffc107;">Monitoring stopped</p>';
             } catch (error) {
