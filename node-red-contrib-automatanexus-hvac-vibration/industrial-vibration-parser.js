@@ -155,34 +155,54 @@ module.exports = function(RED) {
                 let parsedData = parseIndustrialData(msg.payload);
                 
                 if (parsedData) {
-                    node.messageCount++;
-                    node.lastUpdate = new Date();
+                    // Handle array of sensors from monitoring API
+                    let dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+                    let messages = [];
                     
-                    // Update sensor status tracking
-                    node.sensorStatus[parsedData.sensor_address] = {
-                        lastSeen: node.lastUpdate,
-                        condition: parsedData.equipment_condition
-                    };
-                    
-                    // Set global variables
-                    if (node.globalVars) {
-                        setIndustrialGlobals(parsedData);
-                    }
+                    dataArray.forEach(data => {
+                        let processedData = data;
+                        
+                        // If already standardized, use it
+                        if (!data.sensor_address && !data.equipment_name) {
+                            processedData = standardizeIndustrialData(data);
+                        }
+                        
+                        if (processedData) {
+                            node.messageCount++;
+                            node.lastUpdate = new Date();
+                            
+                            // Update sensor status tracking
+                            node.sensorStatus[processedData.sensor_address] = {
+                                lastSeen: node.lastUpdate,
+                                condition: processedData.equipment_condition
+                            };
+                            
+                            // Set global variables
+                            if (node.globalVars) {
+                                setIndustrialGlobals(processedData);
+                            }
+                            
+                            // Create output message
+                            messages.push({
+                                payload: processedData,
+                                topic: `${node.globalPrefix}/${processedData.equipment_type.toLowerCase()}/${processedData.sensor_address}`,
+                                sensor_address: processedData.sensor_address,
+                                equipment_type: processedData.equipment_type,
+                                equipment_name: processedData.equipment_name,
+                                iso_zone: processedData.iso_zone,
+                                iso_class: processedData.iso_class,
+                                alerts: processedData.alerts
+                            });
+                        }
+                    });
                     
                     // Update status
                     updateNodeStatus();
                     
-                    // Send output
-                    send([{
-                        payload: parsedData,
-                        topic: `${node.globalPrefix}/${parsedData.equipment_type.toLowerCase()}/${parsedData.sensor_address}`,
-                        sensor_address: parsedData.sensor_address,
-                        equipment_type: parsedData.equipment_type,
-                        equipment_name: parsedData.equipment_name,
-                        iso_zone: parsedData.iso_zone,
-                        iso_class: parsedData.iso_class,
-                        alerts: parsedData.alerts
-                    }]);
+                    // Send all messages
+                    if (messages.length > 0) {
+                        send([messages]);
+                    }
                     
                     if (done) done();
                 } else {
@@ -207,20 +227,28 @@ module.exports = function(RED) {
                     if (payload.includes('[OK]') || payload.includes('[WARN]') || 
                         payload.includes('[CRIT]') || payload.includes('[EMRG]')) {
                         data = parseConsoleOutput(payload);
+                        return standardizeIndustrialData(data);
                     } else {
                         data = JSON.parse(payload);
                     }
                 } else if (typeof payload === 'object') {
-                    // Check if this is monitoring API data (has equipment names as keys)
-                    if (isMonitoringAPIData(payload)) {
-                        // Convert monitoring API format to standard format
-                        data = convertMonitoringAPIData(payload);
-                    } else {
-                        data = payload;
-                    }
+                    data = payload;
                 }
                 
-                return standardizeIndustrialData(data);
+                // Check if this is monitoring API data (has equipment names as keys)
+                if (isMonitoringAPIData(data)) {
+                    // Convert monitoring API format - returns array or single object
+                    let converted = convertMonitoringAPIData(data);
+                    
+                    // If array, standardize each item
+                    if (Array.isArray(converted)) {
+                        return converted.map(item => standardizeIndustrialData(item));
+                    } else {
+                        return standardizeIndustrialData(converted);
+                    }
+                } else {
+                    return standardizeIndustrialData(data);
+                }
                 
             } catch (error) {
                 return null;
@@ -246,23 +274,31 @@ module.exports = function(RED) {
         
         // Convert monitoring API format to parser format
         function convertMonitoringAPIData(apiData) {
-            // Take the first equipment entry
-            let equipmentName = Object.keys(apiData)[0];
-            let sensorData = apiData[equipmentName];
+            // Handle multiple sensors - return array
+            let results = [];
             
-            return {
-                equipment_name: equipmentName,
-                equipment_type: detectEquipmentType(equipmentName),
-                temperature_f: sensorData.temperature_f,
-                vibration_velocity: sensorData.velocity_mms,
-                rms_acceleration: sensorData.rms_acceleration,
-                iso_zone: sensorData.iso_zone,
-                alert_level: sensorData.alert_level || "NORMAL",
-                // Include any additional fields from API
-                hp: sensorData.hp,
-                voltage: sensorData.voltage,
-                phase: sensorData.phase
-            };
+            for (let equipmentName in apiData) {
+                if (apiData.hasOwnProperty(equipmentName)) {
+                    let sensorData = apiData[equipmentName];
+                    
+                    results.push({
+                        equipment_name: equipmentName,
+                        equipment_type: detectEquipmentType(equipmentName),
+                        temperature_f: sensorData.temperature_f,
+                        vibration_velocity: sensorData.velocity_mms,
+                        rms_acceleration: sensorData.rms_acceleration,
+                        iso_zone: sensorData.iso_zone,
+                        alert_level: sensorData.alert_level || "NORMAL",
+                        // Include any additional fields from API
+                        hp: sensorData.hp,
+                        voltage: sensorData.voltage,
+                        phase: sensorData.phase
+                    });
+                }
+            }
+            
+            // Return array if multiple sensors, single object if one
+            return results.length === 1 ? results[0] : results;
         }
         
         // Detect equipment type from name
