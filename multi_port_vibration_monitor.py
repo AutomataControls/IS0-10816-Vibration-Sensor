@@ -49,40 +49,46 @@ class EquipmentConfig:
     
     def get_iso_thresholds(self) -> Dict[str, float]:
         """Get ISO 10816-3 thresholds based on equipment type and power"""
-        # Convert HP to kW for ISO standards
-        kw = self.hp * 0.746
+        # Based on comprehensive guide for 3-50 HP motors
         
-        # ISO 10816-3 Group classifications
-        # Group 1: 15kW < P <= 300kW (20-400 HP) on rigid foundations
-        # Group 2: 15kW < P <= 300kW on flexible foundations
-        # Group 3: 300kW < P <= 50MW on rigid foundations
-        # Group 4: 300kW < P <= 50MW on flexible foundations
-        
-        if self.mounting == "rigid":
-            if kw <= 300:  # Group 1
+        # Determine motor group based on HP and type
+        if self.hp < 15:  # Small motors (3-15 HP)
+            # Group III/IV - Smaller limits for pumps and integral units
+            if self.equipment_type in ["centrifugal_pump", "circulation_pump"]:
                 return {
-                    "zone_ab": 1.8,   # A/B boundary
-                    "zone_bc": 4.5,   # B/C boundary  
-                    "zone_cd": 11.0   # C/D boundary
+                    "zone_ab": 1.4,   # A/B boundary (Good/Acceptable)
+                    "zone_bc": 2.8,   # B/C boundary (Acceptable/Unsatisfactory)
+                    "zone_cd": 4.5    # C/D boundary (Unsatisfactory/Unacceptable)
                 }
-            else:  # Group 3
+            else:
+                # Standard small motors
                 return {
-                    "zone_ab": 2.8,
-                    "zone_bc": 7.1,
-                    "zone_cd": 18.0
+                    "zone_ab": 1.4,
+                    "zone_bc": 2.8,
+                    "zone_cd": 4.5
                 }
-        else:  # flexible mounting
-            if kw <= 300:  # Group 2
+        else:  # Medium motors (15-50 HP)
+            # Group II - Standard industrial machines
+            if self.equipment_type == "cooling_tower_motor":
+                # Cooling towers often have higher acceptable vibration
                 return {
-                    "zone_ab": 2.8,
-                    "zone_bc": 7.1,
-                    "zone_cd": 18.0
+                    "zone_ab": 2.3,   # A/B boundary
+                    "zone_bc": 4.6,   # B/C boundary
+                    "zone_cd": 7.1    # C/D boundary
                 }
-            else:  # Group 4
+            elif self.equipment_type in ["centrifugal_pump", "circulation_pump"]:
+                # Group III - Pumps with separate drivers
                 return {
-                    "zone_ab": 3.5,
-                    "zone_bc": 8.5,
-                    "zone_cd": 21.0
+                    "zone_ab": 1.4,
+                    "zone_bc": 2.8,
+                    "zone_cd": 4.5
+                }
+            else:
+                # Group II - Standard medium motors
+                return {
+                    "zone_ab": 2.3,
+                    "zone_bc": 4.6,
+                    "zone_cd": 7.1
                 }
 
 @dataclass
@@ -309,7 +315,9 @@ class MultiPortVibrationMonitor:
         print("\nMonitoring started...")
         print("=" * 80)
         print("Gravity compensation: ON")
-        print("ISO 10816-3 zones: A=Good, B=Satisfactory, C=Unsatisfactory, D=Unacceptable")
+        print("ISO 10816-3 Vibration Standards for 3-50 HP Motors:")
+        print("  Group II (15-50 HP):   Zone A: 0-2.3 | B: 2.3-4.6 | C: 4.6-7.1 | D: >7.1 mm/s")
+        print("  Group III/IV (3-15 HP): Zone A: 0-1.4 | B: 1.4-2.8 | C: 2.8-4.5 | D: >4.5 mm/s")
         print("=" * 80)
         
         while self.running:
@@ -329,11 +337,17 @@ class MultiPortVibrationMonitor:
                         'CRITICAL': '[CRIT]'
                     }.get(reading.alert_level, '[????]')
                     
+                    # Get ISO group info for display
+                    iso_group = "?"
+                    if port in self.equipment_configs:
+                        hp = self.equipment_configs[port].hp
+                        iso_group = "II" if hp >= 15 else "III/IV"
+                    
                     print(f"{alert_symbol} {reading.timestamp.strftime('%H:%M:%S')} | "
                           f"{reading.sensor_id} | "
                           f"RMS: {reading.rms_acceleration:6.4f}g | "
                           f"Velocity: {reading.velocity_mms:5.2f}mm/s | "
-                          f"ISO Zone: {reading.iso_zone} | "
+                          f"ISO {iso_group}-{reading.iso_zone} | "
                           f"Temp: {reading.temperature:5.1f}°F")
                     
                     # Log to CSV
