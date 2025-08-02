@@ -3,6 +3,9 @@
 
 ![AutomataNexus Logo](automata-nexus-logo.png)
 
+> **⚠️ ALPHA RELEASE v3.0.0-alpha.1**  
+> This is a pre-release version with new database features. For production use, consider v2.2.0.
+
 [![License](https://img.shields.io/badge/license-Commercial-blue.svg)](LICENSE)
 [![ISO](https://img.shields.io/badge/ISO-10816--3-green.svg)](docs/ISO-10816-Motor-Vibration-Guide.md)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
