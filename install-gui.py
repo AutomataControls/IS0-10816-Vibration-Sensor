@@ -79,22 +79,46 @@ class InstallerWindow:
         header_frame = tk.Frame(self.main_frame, bg=self.bg_color)
         header_frame.pack(fill=tk.X, pady=(0, 20))
         
-        # Logo placeholder (circle with gradient effect)
+        # Logo
         logo_frame = tk.Frame(header_frame, bg=self.bg_color)
         logo_frame.pack(side=tk.LEFT, padx=(0, 15))
         
-        # Create gradient-like logo
-        canvas = tk.Canvas(logo_frame, width=60, height=60, bg=self.bg_color, highlightthickness=0)
-        canvas.pack()
+        # Try to load the actual logo
+        logo_loaded = False
+        try:
+            # Check multiple possible logo locations
+            logo_paths = [
+                "automata-nexus-logo.png",
+                "/home/Automata/IS0-10816-Vibration-Sensor/automata-nexus-logo.png",
+                os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png")
+            ]
+            
+            for logo_path in logo_paths:
+                if os.path.exists(logo_path):
+                    if PIL_AVAILABLE:
+                        img = Image.open(logo_path)
+                        img = img.resize((60, 60), Image.Resampling.LANCZOS)
+                        self.logo_img = ImageTk.PhotoImage(img)
+                        logo_label = tk.Label(logo_frame, image=self.logo_img, bg=self.bg_color)
+                        logo_label.pack()
+                        logo_loaded = True
+                        break
+        except Exception as e:
+            print(f"Could not load logo: {e}")
         
-        # Draw gradient circle
-        for i in range(30, 0, -2):
-            color_value = int(255 - (255 - 240) * (i / 30))
-            color = f"#{color_value:02x}{int(color_value * 0.7):02x}{int(color_value * 0.4):02x}"
-            canvas.create_oval(30-i, 30-i, 30+i, 30+i, fill=color, outline="")
-        
-        # Add text
-        canvas.create_text(30, 30, text="AN", font=("Arial", 20, "bold"), fill="white")
+        # Fallback to drawn logo if image not loaded
+        if not logo_loaded:
+            canvas = tk.Canvas(logo_frame, width=60, height=60, bg=self.bg_color, highlightthickness=0)
+            canvas.pack()
+            
+            # Draw gradient circle
+            for i in range(30, 0, -2):
+                color_value = int(255 - (255 - 240) * (i / 30))
+                color = f"#{color_value:02x}{int(color_value * 0.7):02x}{int(color_value * 0.4):02x}"
+                canvas.create_oval(30-i, 30-i, 30+i, 30+i, fill=color, outline="")
+            
+            # Add text
+            canvas.create_text(30, 30, text="AN", font=("Arial", 20, "bold"), fill="white")
         
         # Title
         title_frame = tk.Frame(header_frame, bg=self.bg_color)
