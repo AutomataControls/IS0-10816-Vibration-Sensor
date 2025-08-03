@@ -201,12 +201,25 @@ class MultiPortVibrationMonitor:
         self.configured = False
         self.config_file = "equipment_config.json"
         
+        # BMS integration configuration - loaded from .env
+        self.bms_config = {
+            'enabled': os.getenv('BMS_ENABLED', 'false').lower() == 'true',
+            'url': os.getenv('BMS_URL', ''),
+            'location_name': os.getenv('BMS_LOCATION_NAME', ''),
+            'system_name': os.getenv('BMS_SYSTEM_NAME', ''),
+            'location_id': os.getenv('BMS_LOCATION_ID', ''),
+            'equipment_id': os.getenv('BMS_EQUIPMENT_ID', ''),
+            'interval': int(os.getenv('BMS_INTERVAL', '60')),  # seconds
+            'last_send': None
+        }
+        
         # Initialize CSV logging
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.csv_filename = f"multi_sensor_data_{timestamp}.csv"
         
         # Load saved configuration if exists
         self.load_configuration()
+        # BMS config is loaded from environment variables above
         
     def calculate_crc16(self, data):
         """Calculate Modbus CRC16"""
@@ -668,6 +681,9 @@ class MultiPortVibrationMonitor:
             if readings:
                 print("-" * 80)
                 self.csv_file.flush()
+                
+            # Send to BMS if enabled
+            self.send_to_bms()
             
             time.sleep(1)  # Read every second
     
@@ -750,6 +766,134 @@ class MultiPortVibrationMonitor:
             print(f"Loaded configuration for {len(self.equipment_configs)} sensors")
         except Exception as e:
             print(f"Error loading configuration: {e}")
+    
+    def save_bms_configuration(self):
+        """Save BMS configuration to .env file"""
+        try:
+            env_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/.env"
+            
+            # Read existing .env content
+            env_content = []
+            bms_keys = ['BMS_ENABLED', 'BMS_URL', 'BMS_LOCATION_NAME', 'BMS_SYSTEM_NAME', 
+                       'BMS_LOCATION_ID', 'BMS_EQUIPMENT_ID', 'BMS_INTERVAL']
+            
+            if os.path.exists(env_path):
+                with open(env_path, 'r') as f:
+                    for line in f:
+                        # Skip existing BMS configuration lines
+                        if not any(line.startswith(key + '=') for key in bms_keys):
+                            env_content.append(line.rstrip())
+            
+            # Add BMS configuration
+            env_content.append("\n# BMS Integration Configuration")
+            env_content.append(f"BMS_ENABLED={'true' if self.bms_config['enabled'] else 'false'}")
+            env_content.append(f"BMS_URL={self.bms_config['url']}")
+            env_content.append(f"BMS_LOCATION_NAME={self.bms_config['location_name']}")
+            env_content.append(f"BMS_SYSTEM_NAME={self.bms_config['system_name']}")
+            env_content.append(f"BMS_LOCATION_ID={self.bms_config['location_id']}")
+            env_content.append(f"BMS_EQUIPMENT_ID={self.bms_config['equipment_id']}")
+            env_content.append(f"BMS_INTERVAL={self.bms_config['interval']}")
+            
+            # Write back to .env file
+            with open(env_path, 'w') as f:
+                f.write('\n'.join(env_content) + '\n')
+                
+            print("BMS configuration saved to .env file")
+            
+            # Reload environment variables
+            load_dotenv(override=True)
+            
+        except Exception as e:
+            print(f"Error saving BMS configuration: {e}")
+    
+    def send_to_bms(self):
+        """Send current readings to BMS using InfluxDB line protocol"""
+        if not self.bms_config['enabled'] or not self.latest_readings:
+            return
+            
+        # Check if enough time has passed since last send
+        now = datetime.now()
+        if self.bms_config['last_send']:
+            last_send = datetime.fromisoformat(self.bms_config['last_send']) if isinstance(self.bms_config['last_send'], str) else self.bms_config['last_send']
+            if (now - last_send).total_seconds() < self.bms_config['interval']:
+                return
+        
+        try:
+            import requests
+            
+            # Get device IP
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                device_ip = s.getsockname()[0]
+                s.close()
+            except:
+                device_ip = "unknown"
+            
+            # Aggregate metrics from all sensors
+            total_velocity = 0
+            max_velocity = 0
+            total_accel = 0
+            max_accel = 0
+            avg_temp = 0
+            sensor_count = 0
+            alert_status = "Normal"
+            
+            for port, reading in self.latest_readings.items():
+                if reading:
+                    sensor_count += 1
+                    total_velocity += reading.velocity_mms
+                    max_velocity = max(max_velocity, reading.velocity_mms)
+                    total_accel += reading.rms_acceleration
+                    max_accel = max(max_accel, reading.rms_acceleration)
+                    avg_temp += reading.temperature
+                    
+                    # Check for alerts
+                    if reading.iso_zone in ['C', 'D']:
+                        alert_status = f"Warning-Zone{reading.iso_zone}"
+            
+            if sensor_count > 0:
+                avg_velocity = total_velocity / sensor_count
+                avg_accel = total_accel / sensor_count
+                avg_temp = avg_temp / sensor_count
+                
+                # Build InfluxDB line protocol
+                line_protocol = (
+                    f"vibration_metrics,"
+                    f"location={self.bms_config['location_name']},"
+                    f"system={self.bms_config['system_name']},"
+                    f"equipment_type=vibration_monitor,"
+                    f"location_id={self.bms_config['location_id']},"
+                    f"equipmentId={self.bms_config['equipment_id']} "
+                    f"avg_velocity_mms={avg_velocity:.2f},"
+                    f"max_velocity_mms={max_velocity:.2f},"
+                    f"avg_acceleration_g={avg_accel:.3f},"
+                    f"max_acceleration_g={max_accel:.3f},"
+                    f"temperature_f={avg_temp:.1f},"
+                    f"sensor_count={sensor_count},"
+                    f"alert_status=\"{alert_status}\","
+                    f"monitoring_enabled=true,"
+                    f"command_type=\"metrics\","
+                    f"source=\"vibration-monitor-{device_ip}\""
+                )
+                
+                # Send to BMS
+                response = requests.post(
+                    self.bms_config['url'],
+                    data=line_protocol,
+                    headers={'Content-Type': 'text/plain'},
+                    timeout=5
+                )
+                
+                if response.status_code in [200, 204]:
+                    self.bms_config['last_send'] = now.isoformat()
+                    print(f"Sent metrics to BMS: {sensor_count} sensors, avg velocity: {avg_velocity:.2f} mm/s")
+                else:
+                    print(f"BMS send failed: {response.status_code} - {response.text}")
+                    
+        except Exception as e:
+            print(f"Error sending to BMS: {e}")
 
 # Flask API Routes
 @app.route('/api/auth/login', methods=['POST'])
@@ -1810,6 +1954,53 @@ def zero_calibration(port):
         })
     else:
         return jsonify({'error': 'No current reading available'}), 400
+
+@app.route('/api/bms/config', methods=['GET'])
+@require_auth
+def get_bms_config():
+    """Get BMS configuration"""
+    global monitor_instance
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 500
+        
+    return jsonify({
+        'enabled': monitor_instance.bms_config['enabled'],
+        'url': monitor_instance.bms_config['url'],
+        'location_name': monitor_instance.bms_config['location_name'],
+        'system_name': monitor_instance.bms_config['system_name'],
+        'location_id': monitor_instance.bms_config['location_id'],
+        'equipment_id': monitor_instance.bms_config['equipment_id'],
+        'interval': monitor_instance.bms_config['interval']
+    })
+
+@app.route('/api/bms/config', methods=['POST'])
+@require_auth
+def set_bms_config():
+    """Update BMS configuration"""
+    global monitor_instance
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 500
+        
+    data = request.get_json()
+    
+    # Update configuration
+    monitor_instance.bms_config['enabled'] = data.get('enabled', False)
+    monitor_instance.bms_config['url'] = data.get('url', '')
+    monitor_instance.bms_config['location_name'] = data.get('location_name', '')
+    monitor_instance.bms_config['system_name'] = data.get('system_name', '')
+    monitor_instance.bms_config['location_id'] = data.get('location_id', '')
+    monitor_instance.bms_config['equipment_id'] = data.get('equipment_id', '')
+    monitor_instance.bms_config['interval'] = data.get('interval', 60)
+    
+    # Save to .env file
+    monitor_instance.save_bms_configuration()
+    
+    return jsonify({
+        'success': True,
+        'message': 'BMS configuration saved'
+    })
 
 def main():
     global monitor_instance

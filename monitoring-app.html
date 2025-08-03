@@ -232,14 +232,70 @@
             <button onclick="login()">Login</button>
         </div>
     </div>
+    
+    <!-- BMS Configuration Modal -->
+    <div id="bms-modal" class="login-modal">
+        <div class="login-form" style="max-width: 500px;">
+            <h2>BMS Integration Configuration</h2>
+            <p style="color: #666; font-size: 14px; margin-bottom: 1rem;">
+                Configure InfluxDB connection to send vibration metrics to your Building Management System
+            </p>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">BMS URL</label>
+                <input type="text" id="bms-url" placeholder="http://your-bms-server:8181/api/v3/write_lp?db=Locations&precision=nanosecond">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">Location Name</label>
+                <input type="text" id="bms-location-name" placeholder="e.g., BuildingA">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">System Name</label>
+                <input type="text" id="bms-system-name" placeholder="e.g., VibrationMonitor1">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">Location ID</label>
+                <input type="text" id="bms-location-id" placeholder="e.g., 4">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">Equipment ID</label>
+                <input type="text" id="bms-equipment-id" placeholder="e.g., BBHCLhaeItV7pIdinQzM">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">Send Interval (seconds)</label>
+                <input type="number" id="bms-interval" placeholder="60" value="60" min="10" max="3600">
+            </div>
+            
+            <div style="margin-bottom: 1rem;">
+                <label style="display: inline-flex; align-items: center;">
+                    <input type="checkbox" id="bms-enabled" style="width: auto; margin-right: 0.5rem;">
+                    Enable BMS Integration
+                </label>
+            </div>
+            
+            <div id="bms-error" class="error"></div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button onclick="saveBMSConfig()">Save Configuration</button>
+                <button onclick="closeBMSModal()" style="background: #6c757d;">Cancel</button>
+            </div>
+        </div>
+    </div>
     <div class="header">
         <div class="logo">
             <img src="icon.png" alt="AutomataNexus" style="width: 40px; height: 40px; border-radius: 50%;" onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex';">
             <div id="logo-fallback" class="logo-circle" style="display: none;">AN</div>
             <h1>AutomataNexus Vibration Monitor</h1>
         </div>
-        <div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
             <span id="connection-status" class="status offline">Offline</span>
+            <button class="btn" onclick="keepRunning()" style="background: #28a745;">⏯️ Keep Running</button>
+            <button class="btn" onclick="showBMSConfig()" style="background: #17a2b8;">🔗 Link to BMS</button>
             <button class="btn" onclick="location.reload()">↻ Refresh</button>
         </div>
     </div>
@@ -1004,6 +1060,85 @@
                 console.error('Error updating calibration values:', error);
             }
         };
+        
+        // Keep Running function
+        function keepRunning() {
+            if (confirm('Keep the monitoring service running in the background?\n\nThe browser will close but monitoring will continue.')) {
+                // Just close the window - service keeps running
+                window.close();
+                // If window.close() doesn't work (some browsers block it), show instructions
+                if (!window.closed) {
+                    alert('Please close this browser tab/window manually.\n\nThe monitoring service will continue running in the background.');
+                }
+            }
+        }
+        
+        // BMS Configuration functions
+        function showBMSConfig() {
+            document.getElementById('bms-modal').style.display = 'flex';
+            loadBMSConfig();
+        }
+        
+        function closeBMSModal() {
+            document.getElementById('bms-modal').style.display = 'none';
+            document.getElementById('bms-error').textContent = '';
+        }
+        
+        async function loadBMSConfig() {
+            try {
+                const response = await authenticatedFetch(`${API_BASE}/bms/config`);
+                if (response.ok) {
+                    const config = await response.json();
+                    document.getElementById('bms-url').value = config.url || '';
+                    document.getElementById('bms-location-name').value = config.location_name || '';
+                    document.getElementById('bms-system-name').value = config.system_name || '';
+                    document.getElementById('bms-location-id').value = config.location_id || '';
+                    document.getElementById('bms-equipment-id').value = config.equipment_id || '';
+                    document.getElementById('bms-interval').value = config.interval || 60;
+                    document.getElementById('bms-enabled').checked = config.enabled || false;
+                }
+            } catch (error) {
+                console.error('Error loading BMS config:', error);
+            }
+        }
+        
+        async function saveBMSConfig() {
+            const config = {
+                url: document.getElementById('bms-url').value,
+                location_name: document.getElementById('bms-location-name').value,
+                system_name: document.getElementById('bms-system-name').value,
+                location_id: document.getElementById('bms-location-id').value,
+                equipment_id: document.getElementById('bms-equipment-id').value,
+                interval: parseInt(document.getElementById('bms-interval').value),
+                enabled: document.getElementById('bms-enabled').checked
+            };
+            
+            // Validate required fields
+            if (config.enabled) {
+                if (!config.location_name || !config.system_name || !config.location_id || !config.equipment_id) {
+                    document.getElementById('bms-error').textContent = 'All fields are required when BMS integration is enabled';
+                    return;
+                }
+            }
+            
+            try {
+                const response = await authenticatedFetch(`${API_BASE}/bms/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.ok) {
+                    alert('BMS configuration saved successfully!');
+                    closeBMSModal();
+                } else {
+                    const error = await response.json();
+                    document.getElementById('bms-error').textContent = error.error || 'Failed to save configuration';
+                }
+            } catch (error) {
+                document.getElementById('bms-error').textContent = 'Connection error: ' + error.message;
+            }
+        }
     </script>
 </body>
 </html>

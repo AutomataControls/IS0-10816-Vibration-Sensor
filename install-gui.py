@@ -536,7 +536,7 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         
     def install_python_packages(self):
         self.log("Installing Python packages...")
-        packages = ["pyserial", "flask", "flask-cors", "numpy", "Pillow", "bcrypt", "PyJWT", "python-dotenv"]
+        packages = ["pyserial", "flask", "flask-cors", "numpy", "Pillow", "bcrypt", "PyJWT", "python-dotenv", "requests"]
         
         # Check if packages are already installed via apt, only install missing ones via pip
         for pkg in packages:
