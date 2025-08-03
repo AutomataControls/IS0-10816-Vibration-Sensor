@@ -49,7 +49,23 @@ from dotenv import load_dotenv
 import hashlib
 
 # Load environment variables
-load_dotenv()
+print(f"Starting vibration monitor from: {os.path.abspath(__file__)}")
+print(f"Working directory: {os.getcwd()}")
+
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+    print(f"Loaded .env from: {env_path}")
+else:
+    # Try alternate location
+    alt_env_path = '/opt/automatanexus/IS0-10816-Vibration-Sensor/.env'
+    if os.path.exists(alt_env_path):
+        load_dotenv(alt_env_path)
+        print(f"Loaded .env from alternate location: {alt_env_path}")
+    else:
+        load_dotenv()
+        print(f"Warning: .env file not found at {env_path} or {alt_env_path}")
+        print("Authentication will use default values!")
 
 # Flask app
 app = Flask(__name__)
@@ -60,6 +76,17 @@ AUTH_ENABLED = os.getenv('API_ENABLE_AUTH', 'false').lower() == 'true'
 SECRET_KEY = os.getenv('API_SECRET_KEY', 'default-secret-key-change-me')
 PASSWORD_HASH = os.getenv('API_PASSWORD_HASH', '')
 TOKEN_EXPIRY_HOURS = int(os.getenv('API_TOKEN_EXPIRY_HOURS', '24'))
+
+# Debug logging for auth configuration
+print(f"\nAuthentication Configuration:")
+print(f"  AUTH_ENABLED: {AUTH_ENABLED}")
+print(f"  PASSWORD_HASH exists: {bool(PASSWORD_HASH)}")
+print(f"  SECRET_KEY: {'Generated during install' if SECRET_KEY != 'default-secret-key-change-me' else 'NOT CONFIGURED - Check .env file!'}")
+print(f"  TOKEN_EXPIRY_HOURS: {TOKEN_EXPIRY_HOURS}")
+
+if AUTH_ENABLED and not PASSWORD_HASH:
+    print("\n⚠️  WARNING: Authentication is enabled but no password is set!")
+    print("  Check that .env file exists and contains API_PASSWORD_HASH")
 
 # Store active tokens (in production, use Redis or database)
 active_tokens = set()
@@ -915,36 +942,53 @@ def login():
     
     # Verify password
     try:
-        import bcrypt
-        password_valid = bcrypt.checkpw(password.encode('utf-8'), PASSWORD_HASH.encode('utf-8'))
-    except:
-        # Fallback to SHA256 if bcrypt not available
-        password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
-        password_valid = password_hash == PASSWORD_HASH
+        # Check if it's a bcrypt hash
+        if PASSWORD_HASH.startswith('$2b$') or PASSWORD_HASH.startswith('$2a$'):
+            import bcrypt
+            # Ensure PASSWORD_HASH is bytes for bcrypt
+            password_valid = bcrypt.checkpw(password.encode('utf-8'), PASSWORD_HASH.encode('utf-8'))
+        else:
+            # SHA256 hash comparison
+            password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            password_valid = password_hash == PASSWORD_HASH
+    except Exception as e:
+        print(f"Password verification error: {e}")
+        print(f"PASSWORD_HASH type: {type(PASSWORD_HASH)}, starts with: {PASSWORD_HASH[:10] if PASSWORD_HASH else 'None'}")
+        # Try SHA256 as fallback
+        try:
+            password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+            password_valid = password_hash == PASSWORD_HASH
+        except Exception as e2:
+            print(f"SHA256 fallback also failed: {e2}")
+            password_valid = False
     
     if not password_valid:
         response = jsonify({'error': 'Invalid password'})
         response.headers['Content-Type'] = 'application/json'
         return response, 401
     
-    # Generate JWT token
-    expiry = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
-    token = jwt.encode({
-        'exp': expiry,
-        'iat': datetime.utcnow(),
-        'sub': 'api-user'
-    }, SECRET_KEY, algorithm='HS256')
-    
-    # Add to active tokens
-    active_tokens.add(token)
-    
-    response = jsonify({
-        'token': token,
-        'expires_at': expiry.isoformat(),
-        'expires_in': TOKEN_EXPIRY_HOURS * 3600
-    })
-    response.headers['Content-Type'] = 'application/json'
-    return response, 200
+    try:
+        # Generate JWT token
+        expiry = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
+        token = jwt.encode({
+            'exp': expiry,
+            'iat': datetime.utcnow(),
+            'sub': 'api-user'
+        }, SECRET_KEY, algorithm='HS256')
+        
+        # Add to active tokens
+        active_tokens.add(token)
+        
+        response = jsonify({
+            'token': token,
+            'expires_at': expiry.isoformat(),
+            'expires_in': TOKEN_EXPIRY_HOURS * 3600
+        })
+        response.headers['Content-Type'] = 'application/json'
+        return response, 200
+    except Exception as e:
+        print(f"Error generating token: {e}")
+        return jsonify({'error': f'Failed to generate token: {str(e)}'}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
 @require_auth
@@ -1008,20 +1052,53 @@ def serve_logo():
     except Exception as e:
         return f"Error loading logo: {str(e)}", 500
 
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon or return empty response to stop 404 errors"""
+    import os
+    from flask import send_file
+    # Try to find an actual favicon
+    possible_paths = [
+        'favicon.ico',
+        'icon.png',
+        os.path.join(os.path.dirname(__file__), 'favicon.ico'),
+        '/opt/automatanexus/IS0-10816-Vibration-Sensor/favicon.ico'
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            return send_file(path)
+    
+    # Return empty response to prevent 404 errors
+    return '', 204
+
 # Error handlers
 @app.errorhandler(404)
 def not_found(error):
     """Return JSON for 404 errors on API routes"""
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'API endpoint not found'}), 404
+        response = jsonify({'error': 'API endpoint not found'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 404
     return "Page not found", 404
 
 @app.errorhandler(500)
 def internal_error(error):
     """Return JSON for 500 errors on API routes"""
     if request.path.startswith('/api/'):
-        return jsonify({'error': 'Internal server error'}), 500
+        response = jsonify({'error': 'Internal server error'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
     return "Internal server error", 500
+
+@app.errorhandler(Exception)
+def handle_exception(error):
+    """Catch-all handler for unexpected errors"""
+    if request.path.startswith('/api/'):
+        response = jsonify({'error': str(error)})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
+    return f"An error occurred: {str(error)}", 500
 
 @app.route('/')
 def serve_web_interface():

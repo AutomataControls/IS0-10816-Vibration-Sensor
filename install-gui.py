@@ -767,9 +767,11 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         # Create password dialog
         password_dialog = tk.Toplevel(self.root)
         password_dialog.title("API Security Setup")
-        password_dialog.geometry("400x350")
         password_dialog.transient(self.root)
-        password_dialog.grab_set()
+        
+        # Configure dialog
+        password_dialog.configure(bg=self.bg_color)
+        password_dialog.resizable(False, False)
         
         # Center the dialog properly
         password_dialog.update_idletasks()
@@ -778,6 +780,9 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         x = (password_dialog.winfo_screenwidth() - width) // 2
         y = (password_dialog.winfo_screenheight() - height) // 2
         password_dialog.geometry(f"{width}x{height}+{x}+{y}")
+        
+        # Update window to ensure it's fully created
+        password_dialog.update()
         
         # Variables to store password
         password_result = {'password': None, 'confirmed': False}
@@ -807,12 +812,12 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         
         # Password entry
         tk.Label(frame, text="Password:", bg=self.bg_color).pack(anchor=tk.W)
-        password_entry = tk.Entry(frame, show="*", width=30)
+        password_entry = tk.Entry(frame, show="*", width=30, font=("Arial", 10))
         password_entry.pack(fill=tk.X, pady=(5, 10))
         
         # Confirm password entry
         tk.Label(frame, text="Confirm Password:", bg=self.bg_color).pack(anchor=tk.W)
-        confirm_entry = tk.Entry(frame, show="*", width=30)
+        confirm_entry = tk.Entry(frame, show="*", width=30, font=("Arial", 10))
         confirm_entry.pack(fill=tk.X, pady=(5, 10))
         
         # Status label
@@ -863,6 +868,18 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
                                font=("Arial", 11, "bold"), padx=20, pady=10, 
                                bg=self.primary_color, fg="white")
         set_pwd_btn.pack(side=tk.RIGHT, padx=10)
+        
+        # Now set focus and grab after all widgets are created
+        password_dialog.update()
+        password_entry.focus_set()
+        password_dialog.grab_set()
+        
+        # Bind Enter key to submit
+        def on_enter(event):
+            validate_password()
+        
+        password_entry.bind('<Return>', on_enter)
+        confirm_entry.bind('<Return>', on_enter)
         
         # Wait for dialog to close
         self.root.wait_window(password_dialog)
