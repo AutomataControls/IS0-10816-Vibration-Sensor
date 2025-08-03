@@ -30,14 +30,17 @@ sudo apt install -y \
     python3-dotenv \
     git \
     curl \
-    nodejs \
-    npm \
     sqlite3
 
-# Install/upgrade pip packages
+# Fix npm conflict
+echo "Fixing npm/nodejs conflicts..."
+sudo apt remove -y npm nodejs-legacy 2>/dev/null || true
+sudo apt install -y nodejs npm
+
+# Install/upgrade pip packages (skip Pillow since we have it from apt)
 echo "Installing Python packages via pip..."
 sudo pip3 install --upgrade pip
-sudo pip3 install --upgrade Pillow pyserial flask flask-cors numpy
+sudo pip3 install --upgrade pyserial flask flask-cors numpy
 
 # Test imports
 echo

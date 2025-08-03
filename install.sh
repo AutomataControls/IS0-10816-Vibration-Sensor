@@ -16,26 +16,28 @@ echo "AutomataNexus Vibration Monitor Installer"
 echo "========================================="
 echo
 
+# Always install dependencies first
+echo "Installing required dependencies..."
+sudo apt update
+sudo apt install -y \
+    python3-tk \
+    python3-pil \
+    python3-pil.imagetk \
+    libjpeg-dev \
+    zlib1g-dev \
+    libfreetype6-dev \
+    tk-dev
+
+# Reinstall PIL packages to ensure proper setup
+sudo apt install --reinstall -y python3-pil python3-pil.imagetk
+
 # Check if we have a display
 if [ -n "$DISPLAY" ]; then
-    echo "Display detected. Checking for GUI requirements..."
+    echo "Display detected. Checking GUI requirements..."
     
-    # Check if tkinter is available
-    if python3 -c "import tkinter" 2>/dev/null; then
-        echo "Starting GUI installer..."
-        
-        # Install PIL if needed (for logo handling)
-        if ! python3 -c "from PIL import ImageTk" 2>/dev/null; then
-            echo "Installing image processing libraries..."
-            sudo apt update
-            sudo apt install -y python3-pil python3-pil.imagetk
-            
-            # If still not working, try pip
-            if ! python3 -c "from PIL import ImageTk" 2>/dev/null; then
-                echo "Installing via pip..."
-                sudo pip3 install --upgrade Pillow
-            fi
-        fi
+    # Test if imports work
+    if python3 -c "import tkinter; from PIL import Image, ImageTk" 2>/dev/null; then
+        echo "GUI requirements satisfied. Starting GUI installer..."
         
         # Make sure GUI installer is executable
         chmod +x install-gui.py
@@ -43,16 +45,8 @@ if [ -n "$DISPLAY" ]; then
         # Run GUI installer
         python3 install-gui.py
     else
-        echo "GUI libraries not found. Installing..."
-        sudo apt install -y python3-tk python3-pil python3-pil.imagetk
-        
-        # Try again
-        if python3 -c "import tkinter" 2>/dev/null; then
-            python3 install-gui.py
-        else
-            echo "GUI installation failed. Falling back to CLI installer..."
-            bash install-on-pi.sh
-        fi
+        echo "GUI requirements not met. Using CLI installer..."
+        bash install-on-pi.sh
     fi
 else
     echo "No display detected. Running CLI installer..."
