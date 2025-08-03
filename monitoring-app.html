@@ -192,6 +192,9 @@
         <button class="tab" onclick="showTab('config', this)">
             <span style="font-size: 18px;">⚙️</span> Configuration
         </button>
+        <button class="tab" onclick="showTab('calibration', this)">
+            <span style="font-size: 18px;">🎯</span> Calibration
+        </button>
         <button class="tab" onclick="showTab('control', this)">
             <span style="font-size: 18px;">🎛️</span> Control
         </button>
@@ -217,6 +220,13 @@
             <h2 style="margin-bottom: 1rem;">Equipment Configuration</h2>
             <button class="btn" onclick="scanPorts()" style="margin-bottom: 1rem;">🔍 Scan for USB Ports</button>
             <div id="config-list" class="sensor-grid"></div>
+        </div>
+
+        <!-- Calibration Tab -->
+        <div id="calibration" class="section">
+            <h2 style="margin-bottom: 1rem;">Sensor Calibration & Tuning</h2>
+            <p style="color: #666; margin-bottom: 1rem;">Fine-tune sensor readings for your specific application</p>
+            <div id="calibration-list" class="sensor-grid"></div>
         </div>
 
         <!-- Control Tab -->
@@ -676,6 +686,171 @@
 
         // Start loading data
         startAutoUpdate();
+        
+        // Calibration functions
+        async function loadCalibration() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
+                
+                const container = document.getElementById('calibration-list');
+                
+                if (!status.sensors || status.sensors.length === 0) {
+                    container.innerHTML = '<div style="color: #666;"><p>No sensors configured. Configure sensors first.</p></div>';
+                    return;
+                }
+                
+                // Create calibration forms for each configured sensor
+                container.innerHTML = status.sensors.filter(s => s.configured).map(sensor => {
+                    return `
+                        <div class="sensor-card">
+                            <h3>${sensor.name}</h3>
+                            <p style="color: #666; font-size: 14px; margin-bottom: 1rem;">Port: ${sensor.port}</p>
+                            
+                            <div id="live-${sensor.port}" style="background: #f0f0f0; padding: 1rem; border-radius: 5px; margin-bottom: 1rem;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                    <div>Velocity: <strong id="live-vel-${sensor.port}">--</strong> mm/s</div>
+                                    <div>Acceleration: <strong id="live-acc-${sensor.port}">--</strong> g</div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <button class="btn" onclick="zeroSensor('${sensor.port}')" style="width: 100%; margin-bottom: 1rem;">
+                                    🎯 Set Zero Point
+                                </button>
+                            </div>
+                            
+                            <details style="margin-top: 1rem;">
+                                <summary style="cursor: pointer; color: #f97316;">Advanced Calibration</summary>
+                                <div style="margin-top: 1rem;">
+                                    <div class="form-group">
+                                        <label>Velocity Offset (mm/s)</label>
+                                        <input type="number" id="vel-offset-${sensor.port}" step="0.01" value="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Velocity Scale Factor</label>
+                                        <input type="number" id="vel-scale-${sensor.port}" step="0.01" value="1.0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Acceleration Offset (g)</label>
+                                        <input type="number" id="acc-offset-${sensor.port}" step="0.001" value="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Acceleration Scale Factor</label>
+                                        <input type="number" id="acc-scale-${sensor.port}" step="0.01" value="1.0">
+                                    </div>
+                                    <button class="btn" onclick="applyCalibration('${sensor.port}')">
+                                        💾 Apply Calibration
+                                    </button>
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }).join('');
+                
+                // Load current calibration values
+                for (const sensor of status.sensors.filter(s => s.configured)) {
+                    loadCalibrationValues(sensor.port);
+                }
+            } catch (error) {
+                alert('Error loading calibration: ' + error.message);
+            }
+        }
+        
+        async function loadCalibrationValues(port) {
+            try {
+                const response = await fetch(`${API_BASE}/calibration/${port}`);
+                const cal = await response.json();
+                
+                document.getElementById(`vel-offset-${port}`).value = cal.velocity_offset || 0;
+                document.getElementById(`vel-scale-${port}`).value = cal.velocity_scale || 1.0;
+                document.getElementById(`acc-offset-${port}`).value = cal.accel_offset || 0;
+                document.getElementById(`acc-scale-${port}`).value = cal.accel_scale || 1.0;
+            } catch (error) {
+                console.error('Error loading calibration values:', error);
+            }
+        }
+        
+        async function zeroSensor(port) {
+            if (!confirm(`Set current reading as zero point for this sensor?`)) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/calibration/${port}/zero`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    loadCalibrationValues(port);
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to zero sensor'));
+                }
+            } catch (error) {
+                alert('Error zeroing sensor: ' + error.message);
+            }
+        }
+        
+        async function applyCalibration(port) {
+            try {
+                const data = {
+                    velocity_offset: parseFloat(document.getElementById(`vel-offset-${port}`).value),
+                    velocity_scale: parseFloat(document.getElementById(`vel-scale-${port}`).value),
+                    accel_offset: parseFloat(document.getElementById(`acc-offset-${port}`).value),
+                    accel_scale: parseFloat(document.getElementById(`acc-scale-${port}`).value)
+                };
+                
+                const response = await fetch(`${API_BASE}/calibration/${port}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                } else {
+                    alert('Error: ' + (result.error || 'Failed to apply calibration'));
+                }
+            } catch (error) {
+                alert('Error applying calibration: ' + error.message);
+            }
+        }
+        
+        // Update live values in calibration tab
+        function updateCalibrationLiveValues(data) {
+            Object.entries(data).forEach(([name, sensor]) => {
+                const port = sensor.port;
+                const velElement = document.getElementById(`live-vel-${port}`);
+                const accElement = document.getElementById(`live-acc-${port}`);
+                
+                if (velElement) velElement.textContent = sensor.velocity_mms.toFixed(2);
+                if (accElement) accElement.textContent = sensor.rms_acceleration.toFixed(3);
+            });
+        }
+        
+        // Modify showTab to load calibration when selected
+        const originalShowTab = showTab;
+        showTab = function(tabName, btn) {
+            originalShowTab(tabName, btn);
+            if (tabName === 'calibration') {
+                loadCalibration();
+            }
+        };
+        
+        // Update loadSensorData to also update calibration live values
+        const originalLoadSensorData = loadSensorData;
+        loadSensorData = async function() {
+            await originalLoadSensorData();
+            // Get the latest data and update calibration if that tab is active
+            try {
+                const response = await fetch(`${API_BASE}/readings`);
+                const data = await response.json();
+                updateCalibrationLiveValues(data);
+            } catch (error) {
+                console.error('Error updating calibration values:', error);
+            }
+        };
     </script>
 </body>
 </html>

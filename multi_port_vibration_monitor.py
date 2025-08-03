@@ -72,6 +72,13 @@ class EquipmentConfig:
     phase: int  # 1 or 3
     rpm: int = 1800  # default
     mounting: str = "rigid"  # rigid or flexible
+    # Calibration parameters
+    velocity_offset: float = 0.0  # mm/s offset correction
+    velocity_scale: float = 1.0   # scaling factor
+    accel_offset: float = 0.0     # g offset correction
+    accel_scale: float = 1.0      # scaling factor
+    baseline_velocity: float = 0.0  # baseline for relative measurements
+    baseline_accel: float = 0.0     # baseline for relative measurements
     
     def get_iso_thresholds(self) -> Dict[str, float]:
         """Get ISO 10816-3 thresholds based on equipment type and power"""
@@ -483,6 +490,17 @@ class MultiPortVibrationMonitor:
                 assumed_freq = 30.0  # Hz
                 reading.velocity_mms = (accel_ms2 / (2 * np.pi * assumed_freq)) * 1000
                 
+                # Apply calibration if configured
+                if port in self.equipment_configs:
+                    config = self.equipment_configs[port]
+                    # Apply calibration offsets and scaling
+                    reading.rms_acceleration = (reading.rms_acceleration * config.accel_scale) + config.accel_offset
+                    reading.velocity_mms = (reading.velocity_mms * config.velocity_scale) + config.velocity_offset
+                    
+                    # Ensure non-negative values
+                    reading.rms_acceleration = max(0, reading.rms_acceleration)
+                    reading.velocity_mms = max(0, reading.velocity_mms)
+                
                 # Apply ISO 10816-3 zones based on equipment configuration
                 if port in self.equipment_configs:
                     thresholds = self.equipment_configs[port].get_iso_thresholds()
@@ -627,7 +645,14 @@ class MultiPortVibrationMonitor:
                 'voltage': config.voltage,
                 'phase': config.phase,
                 'rpm': config.rpm,
-                'mounting': config.mounting
+                'mounting': config.mounting,
+                # Calibration parameters
+                'velocity_offset': config.velocity_offset,
+                'velocity_scale': config.velocity_scale,
+                'accel_offset': config.accel_offset,
+                'accel_scale': config.accel_scale,
+                'baseline_velocity': config.baseline_velocity,
+                'baseline_accel': config.baseline_accel
             }
         
         try:
@@ -657,7 +682,14 @@ class MultiPortVibrationMonitor:
                         voltage=data['voltage'],
                         phase=data['phase'],
                         rpm=data.get('rpm', 1800),
-                        mounting=data.get('mounting', 'rigid')
+                        mounting=data.get('mounting', 'rigid'),
+                        # Load calibration parameters with defaults
+                        velocity_offset=data.get('velocity_offset', 0.0),
+                        velocity_scale=data.get('velocity_scale', 1.0),
+                        accel_offset=data.get('accel_offset', 0.0),
+                        accel_scale=data.get('accel_scale', 1.0),
+                        baseline_velocity=data.get('baseline_velocity', 0.0),
+                        baseline_accel=data.get('baseline_accel', 0.0)
                     )
             
             # Check if all ports are configured
@@ -1564,6 +1596,98 @@ def get_alerts():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/calibration/<port>', methods=['GET'])
+def get_calibration(port):
+    """Get current calibration values for a sensor"""
+    global monitor_instance
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 500
+        
+    if port not in monitor_instance.equipment_configs:
+        return jsonify({'error': f'Port {port} not configured'}), 404
+        
+    config = monitor_instance.equipment_configs[port]
+    
+    return jsonify({
+        'port': port,
+        'equipment_name': config.equipment_name,
+        'velocity_offset': config.velocity_offset,
+        'velocity_scale': config.velocity_scale,
+        'accel_offset': config.accel_offset,
+        'accel_scale': config.accel_scale,
+        'baseline_velocity': config.baseline_velocity,
+        'baseline_accel': config.baseline_accel
+    })
+
+@app.route('/api/calibration/<port>', methods=['POST'])
+def set_calibration(port):
+    """Update calibration values for a sensor"""
+    global monitor_instance
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 500
+        
+    if port not in monitor_instance.equipment_configs:
+        return jsonify({'error': f'Port {port} not configured'}), 404
+        
+    data = request.get_json()
+    config = monitor_instance.equipment_configs[port]
+    
+    # Update calibration values if provided
+    if 'velocity_offset' in data:
+        config.velocity_offset = float(data['velocity_offset'])
+    if 'velocity_scale' in data:
+        config.velocity_scale = float(data['velocity_scale'])
+    if 'accel_offset' in data:
+        config.accel_offset = float(data['accel_offset'])
+    if 'accel_scale' in data:
+        config.accel_scale = float(data['accel_scale'])
+    
+    # Save updated configuration
+    monitor_instance.save_configuration()
+    
+    return jsonify({
+        'success': True,
+        'message': f'Calibration updated for {config.equipment_name}'
+    })
+
+@app.route('/api/calibration/<port>/zero', methods=['POST'])
+def zero_calibration(port):
+    """Set current readings as zero baseline"""
+    global monitor_instance
+    
+    if not monitor_instance:
+        return jsonify({'error': 'Monitor not initialized'}), 500
+        
+    if port not in monitor_instance.equipment_configs:
+        return jsonify({'error': f'Port {port} not configured'}), 404
+        
+    # Get current reading
+    if port in monitor_instance.latest_readings:
+        reading = monitor_instance.latest_readings[port]
+        config = monitor_instance.equipment_configs[port]
+        
+        # Set current values as baseline
+        config.baseline_velocity = reading.velocity_mms
+        config.baseline_accel = reading.rms_acceleration
+        
+        # Calculate offsets to zero out current reading
+        config.velocity_offset = -reading.velocity_mms
+        config.accel_offset = -reading.rms_acceleration
+        
+        # Save configuration
+        monitor_instance.save_configuration()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Zero point set for {config.equipment_name}',
+            'baseline_velocity': config.baseline_velocity,
+            'baseline_accel': config.baseline_accel
+        })
+    else:
+        return jsonify({'error': 'No current reading available'}), 400
 
 def main():
     global monitor_instance
