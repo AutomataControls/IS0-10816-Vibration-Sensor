@@ -1055,12 +1055,16 @@
         // Update live values in calibration tab
         function updateCalibrationLiveValues(data) {
             Object.entries(data).forEach(([name, sensor]) => {
-                const port = sensor.port;
-                const velElement = document.getElementById(`live-vel-${port}`);
-                const accElement = document.getElementById(`live-acc-${port}`);
-                
-                if (velElement) velElement.textContent = sensor.velocity_mms.toFixed(2);
-                if (accElement) accElement.textContent = sensor.rms_acceleration.toFixed(3);
+                // Extract port from sensor name (e.g., "Cooling_Tower_1 (ttyUSB0)" -> "ttyUSB0")
+                const match = name.match(/\((ttyUSB\d+)\)/);
+                if (match) {
+                    const port = match[1];
+                    const velElement = document.getElementById(`live-vel-${port}`);
+                    const accElement = document.getElementById(`live-acc-${port}`);
+                    
+                    if (velElement) velElement.textContent = sensor.velocity_mms.toFixed(2);
+                    if (accElement) accElement.textContent = sensor.rms_acceleration.toFixed(3);
+                }
             });
         }
         
@@ -1070,6 +1074,11 @@
             originalShowTab(tabName, btn);
             if (tabName === 'calibration') {
                 loadCalibration();
+                // Also load current sensor readings
+                authenticatedFetch(`${API_BASE}/readings`)
+                    .then(response => response.json())
+                    .then(data => updateCalibrationLiveValues(data))
+                    .catch(error => console.error('Error loading calibration readings:', error));
             }
         };
         
