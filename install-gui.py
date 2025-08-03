@@ -706,8 +706,17 @@ done
 # Final check before opening browser
 if [ "$(check_flask)" != "200" ]; then
     echo "ERROR: Service failed to start properly"
-    echo "Checking service status..."
+    echo ""
+    echo "=== Service Status ==="
     systemctl status vibration-monitor --no-pager
+    echo ""
+    echo "=== Recent Logs ==="
+    sudo journalctl -u vibration-monitor -n 20 --no-pager
+    echo ""
+    echo "=== Direct Test ==="
+    echo "Trying to run the script directly to see error..."
+    cd /opt/automatanexus/IS0-10816-Vibration-Sensor
+    /usr/bin/python3 multi_port_vibration_monitor.py 2>&1 | head -20
     echo ""
     echo "Press Enter to exit..."
     read
