@@ -771,11 +771,13 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         password_dialog.transient(self.root)
         password_dialog.grab_set()
         
-        # Center the dialog
+        # Center the dialog properly
         password_dialog.update_idletasks()
-        x = (password_dialog.winfo_screenwidth() // 2) - (200)
-        y = (password_dialog.winfo_screenheight() // 2) - (175)
-        password_dialog.geometry(f"400x350+{x}+{y}")
+        width = 400
+        height = 380
+        x = (password_dialog.winfo_screenwidth() - width) // 2
+        y = (password_dialog.winfo_screenheight() - height) // 2
+        password_dialog.geometry(f"{width}x{height}+{x}+{y}")
         
         # Variables to store password
         password_result = {'password': None, 'confirmed': False}
@@ -854,13 +856,13 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         button_frame.pack(pady=(10, 0))
         
         cancel_btn = tk.Button(button_frame, text="Cancel", command=password_dialog.destroy,
-                              font=("Arial", 11), padx=25, pady=15)
-        cancel_btn.pack(side=tk.LEFT, padx=5)
+                              font=("Arial", 11), padx=20, pady=10)
+        cancel_btn.pack(side=tk.LEFT, padx=10)
         
         set_pwd_btn = tk.Button(button_frame, text="Set Password", command=validate_password,
-                               font=("Arial", 11, "bold"), padx=25, pady=15, 
+                               font=("Arial", 11, "bold"), padx=20, pady=10, 
                                bg=self.primary_color, fg="white")
-        set_pwd_btn.pack(side=tk.LEFT, padx=5)
+        set_pwd_btn.pack(side=tk.RIGHT, padx=10)
         
         # Wait for dialog to close
         self.root.wait_window(password_dialog)
