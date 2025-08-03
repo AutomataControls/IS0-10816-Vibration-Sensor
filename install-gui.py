@@ -231,7 +231,7 @@ class InstallerWindow:
             bg=self.primary_color,
             fg="white",
             padx=30,
-            pady=10,
+            pady=15,
             relief=tk.FLAT,
             cursor="hand2",
             command=self.start_installation
@@ -245,7 +245,7 @@ class InstallerWindow:
             bg="#e5e7eb",
             fg=self.text_color,
             padx=30,
-            pady=10,
+            pady=15,
             relief=tk.FLAT,
             cursor="hand2",
             command=self.close_installer
@@ -576,11 +576,21 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         current_dir = os.getcwd()
         if "IS0-10816-Vibration-Sensor" in current_dir:
             self.log("Already in repository, copying files...")
-            # Copy current directory to installation location
-            success, output = self.run_command(f"sudo cp -r {current_dir} /opt/automatanexus/")
+            # First check if the target directory already exists
+            target_dir = "/opt/automatanexus/IS0-10816-Vibration-Sensor"
+            self.run_command(f"sudo rm -rf {target_dir}")
+            
+            # Create the target directory
+            self.run_command(f"sudo mkdir -p {target_dir}")
+            
+            # Copy all files from current directory to installation location
+            success, output = self.run_command(f"sudo cp -r . {target_dir}/")
             if not success:
                 self.log(f"✗ Failed to copy files: {output}", "error")
                 return False
+                
+            # Set proper ownership
+            self.run_command(f"sudo chown -R {os.environ.get('USER', 'pi')}:{os.environ.get('USER', 'pi')} {target_dir}")
         else:
             # Clone fresh repository
             self.log("Cloning repository...")
@@ -709,11 +719,14 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame = tk.Frame(frame, bg=self.bg_color)
         button_frame.pack(pady=(10, 0))
         
-        tk.Button(button_frame, text="Cancel", command=password_dialog.destroy,
-                 padx=20, pady=10).pack(side=tk.LEFT, padx=5)
+        cancel_btn = tk.Button(button_frame, text="Cancel", command=password_dialog.destroy,
+                              font=("Arial", 11), padx=25, pady=15)
+        cancel_btn.pack(side=tk.LEFT, padx=5)
         
-        tk.Button(button_frame, text="Set Password", command=validate_password,
-                 padx=20, pady=10, bg=self.primary_color, fg="white").pack(side=tk.LEFT, padx=5)
+        set_pwd_btn = tk.Button(button_frame, text="Set Password", command=validate_password,
+                               font=("Arial", 11, "bold"), padx=25, pady=15, 
+                               bg=self.primary_color, fg="white")
+        set_pwd_btn.pack(side=tk.LEFT, padx=5)
         
         # Wait for dialog to close
         self.root.wait_window(password_dialog)

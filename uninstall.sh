@@ -52,12 +52,15 @@ echo
 # Warning message
 echo -e "${YELLOW}${BOLD}WARNING:${NC} This will permanently remove the following components:"
 echo -e "  • Vibration monitor system service"
-echo -e "  • Application files from /opt/automatanexus-vibration-monitor"
-echo -e "  • Configuration files and settings"
-echo -e "  • Database with historical vibration data"
+echo -e "  • Application files from /opt/automatanexus/IS0-10816-Vibration-Sensor"
+echo -e "  • Configuration files (.env, equipment_config.json, sensor_config.json)"
+echo -e "  • API security settings and passwords"
+echo -e "  • BMS integration configuration"
+echo -e "  • Database with historical vibration data (7 days of metrics)"
 echo -e "  • Node-RED integration package"
 echo -e "  • Desktop shortcuts and menu entries"
 echo -e "  • Log files and temporary data"
+echo -e "  • Calibration settings for all sensors"
 echo
 
 # Interactive component selection
@@ -177,11 +180,23 @@ if [[ "$REMOVE_FILES" == "y" ]]; then
         rm -f vibration-monitor.service 2>/dev/null
         # Remove desktop files
         rm -f vibration-monitor.desktop 2>/dev/null
+        # Remove launcher script
+        rm -f launch-monitor.sh 2>/dev/null
+        # Remove generated icon
+        rm -f icon.png 2>/dev/null
         print_success "Cleaned up data and config files"
     elif [ $removed -eq 0 ]; then
         print_warning "No installation directories found"
     else
         print_success "Application files removed"
+    fi
+    
+    # Remove the main automatanexus directory if empty
+    if [ -d "/opt/automatanexus" ]; then
+        if [ -z "$(ls -A /opt/automatanexus)" ]; then
+            sudo rmdir /opt/automatanexus
+            print_success "Removed empty /opt/automatanexus directory"
+        fi
     fi
     
     show_progress
@@ -193,6 +208,45 @@ if [[ "$REMOVE_CONFIG" == "y" ]]; then
     print_step "Removing configuration files..."
     removed=0
     
+    # Remove .env files with API keys and BMS config
+    if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/.env ]; then
+        sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/.env
+        ((removed++))
+    fi
+    
+    if [ -f ~/.env ]; then
+        rm -f ~/.env
+        ((removed++))
+    fi
+    
+    if [ -f .env ]; then
+        rm -f .env
+        ((removed++))
+    fi
+    
+    # Remove equipment configuration
+    if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/equipment_config.json ]; then
+        sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/equipment_config.json
+        ((removed++))
+    fi
+    
+    if [ -f equipment_config.json ]; then
+        rm -f equipment_config.json
+        ((removed++))
+    fi
+    
+    # Remove sensor configuration
+    if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/sensor_config.json ]; then
+        sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/sensor_config.json
+        ((removed++))
+    fi
+    
+    if [ -f sensor_config.json ]; then
+        rm -f sensor_config.json
+        ((removed++))
+    fi
+    
+    # Remove old style config
     if [ -f ~/.vibration_monitor_config.json ]; then
         rm -f ~/.vibration_monitor_config.json
         ((removed++))
@@ -212,8 +266,14 @@ if [[ "$REMOVE_DATABASE" == "y" ]]; then
     print_step "Removing database files..."
     removed=0
     
+    # Check all possible database locations
     if [ -f ~/vibration_monitor.db ]; then
         rm -f ~/vibration_monitor.db
+        ((removed++))
+    fi
+    
+    if [ -f ~/vibration_metrics.db ]; then
+        rm -f ~/vibration_metrics.db
         ((removed++))
     fi
     
@@ -222,14 +282,29 @@ if [[ "$REMOVE_DATABASE" == "y" ]]; then
         ((removed++))
     fi
     
+    if [ -f /opt/automatanexus-vibration-monitor/vibration_metrics.db ]; then
+        sudo rm -f /opt/automatanexus-vibration-monitor/vibration_metrics.db
+        ((removed++))
+    fi
+    
     if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_monitor.db ]; then
         sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_monitor.db
+        ((removed++))
+    fi
+    
+    if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_metrics.db ]; then
+        sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_metrics.db
         ((removed++))
     fi
     
     # Check current directory
     if [ -f vibration_monitor.db ]; then
         rm -f vibration_monitor.db
+        ((removed++))
+    fi
+    
+    if [ -f vibration_metrics.db ]; then
+        rm -f vibration_metrics.db
         ((removed++))
     fi
     
