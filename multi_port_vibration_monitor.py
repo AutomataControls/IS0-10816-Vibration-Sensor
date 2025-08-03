@@ -2080,7 +2080,7 @@ def zero_calibration(port):
     else:
         return jsonify({'error': 'No current reading available'}), 400
 
-@app.route('/api/bms/config/<port>', methods=['GET'])
+@app.route('/api/bms/config/<path:port>', methods=['GET'])
 @require_auth
 def get_bms_config(port):
     """Get BMS configuration for specific sensor"""
@@ -2089,9 +2089,11 @@ def get_bms_config(port):
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
     
-    # Convert port format if needed
-    if not port.startswith('/dev/'):
+    # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
+    if not port.startswith('/'):
         port = f'/dev/{port}'
+    elif not port.startswith('/dev/'):
+        port = f'/dev{port}'
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
@@ -2111,7 +2113,7 @@ def get_bms_config(port):
         'bms_last_send': config.bms_last_send
     })
 
-@app.route('/api/bms/config/<port>', methods=['POST'])
+@app.route('/api/bms/config/<path:port>', methods=['POST'])
 @require_auth
 def set_bms_config(port):
     """Update BMS configuration for specific sensor"""
@@ -2120,9 +2122,11 @@ def set_bms_config(port):
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
     
-    # Convert port format if needed
-    if not port.startswith('/dev/'):
+    # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
+    if not port.startswith('/'):
         port = f'/dev/{port}'
+    elif not port.startswith('/dev/'):
+        port = f'/dev{port}'
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
