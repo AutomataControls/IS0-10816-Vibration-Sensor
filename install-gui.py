@@ -103,7 +103,11 @@ class InstallerWindow:
                 if os.path.exists(logo_path):
                     if PIL_AVAILABLE:
                         img = Image.open(logo_path)
-                        img = img.resize((60, 60), Image.Resampling.LANCZOS)
+                        # Use LANCZOS directly for older PIL versions
+                        try:
+                            img = img.resize((60, 60), Image.Resampling.LANCZOS)
+                        except AttributeError:
+                            img = img.resize((60, 60), Image.LANCZOS)
                         self.logo_img = ImageTk.PhotoImage(img)
                         logo_label = tk.Label(logo_frame, image=self.logo_img, bg=self.bg_color)
                         logo_label.pack()
@@ -281,7 +285,11 @@ class InstallerWindow:
                     if os.path.exists(logo_path):
                         try:
                             img = Image.open(logo_path)
-                            img = img.resize((80, 80), Image.Resampling.LANCZOS)
+                            # Use LANCZOS directly for older PIL versions
+                            try:
+                                img = img.resize((80, 80), Image.Resampling.LANCZOS)
+                            except AttributeError:
+                                img = img.resize((80, 80), Image.LANCZOS)
                             self.welcome_logo = ImageTk.PhotoImage(img)
                             logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
                             logo_label.pack()
