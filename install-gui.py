@@ -33,8 +33,16 @@ class InstallerWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("AutomataNexus Vibration Monitor Installer")
-        self.root.geometry("600x500")
+        self.root.geometry("700x600")
         self.root.resizable(False, False)
+        
+        # Center the window on screen
+        self.root.update_idletasks()
+        width = 700
+        height = 600
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
         
         # Color theme
         self.bg_color = "#f5f5f5"
@@ -44,36 +52,9 @@ class InstallerWindow:
         
         self.root.configure(bg=self.bg_color)
         
-        # Create main frame
-        self.main_frame = tk.Frame(root, bg=self.bg_color)
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Header with logo
-        self.create_header()
-        
-        # Progress section
-        self.create_progress_section()
-        
-        # Log section
-        self.create_log_section()
-        
-        # Buttons
-        self.create_buttons()
-        
-        self.steps = [
-            ("Updating system packages...", self.update_system),
-            ("Installing dependencies...", self.install_dependencies),
-            ("Installing Python packages...", self.install_python_packages),
-            ("Creating directories...", self.create_directories),
-            ("Cloning repository...", self.clone_repository),
-            ("Setting up service...", self.setup_service),
-            ("Configuring permissions...", self.configure_permissions),
-            ("Creating shortcuts...", self.create_shortcuts),
-            ("Finalizing installation...", self.finalize_installation)
-        ]
-        
-        self.current_step = 0
-        self.installation_complete = False
+        # Start with welcome screen
+        self.accepted_license = False
+        self.show_welcome_screen()
         
     def create_header(self):
         header_frame = tk.Frame(self.main_frame, bg=self.bg_color)
@@ -245,6 +226,176 @@ class InstallerWindow:
             command=self.close_installer
         )
         self.close_button.pack(side=tk.RIGHT)
+        
+    def show_welcome_screen(self):
+        """Show welcome screen with license agreement"""
+        # Clear any existing widgets
+        for widget in self.root.winfo_children():
+            widget.destroy()
+            
+        # Welcome frame
+        welcome_frame = tk.Frame(self.root, bg=self.bg_color)
+        welcome_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=40)
+        
+        # Logo and title
+        header_frame = tk.Frame(welcome_frame, bg=self.bg_color)
+        header_frame.pack(pady=(0, 30))
+        
+        # Try to load logo
+        logo_loaded = False
+        try:
+            logo_paths = [
+                "automata-nexus-logo.png",
+                os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png")
+            ]
+            for logo_path in logo_paths:
+                if os.path.exists(logo_path):
+                    if PIL_AVAILABLE:
+                        img = Image.open(logo_path)
+                        img = img.resize((80, 80), Image.Resampling.LANCZOS)
+                        self.welcome_logo = ImageTk.PhotoImage(img)
+                        logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
+                        logo_label.pack()
+                        logo_loaded = True
+                        break
+        except:
+            pass
+            
+        if not logo_loaded:
+            # Fallback logo
+            canvas = tk.Canvas(header_frame, width=80, height=80, bg=self.bg_color, highlightthickness=0)
+            canvas.pack()
+            canvas.create_oval(10, 10, 70, 70, fill=self.primary_color, outline="")
+            canvas.create_text(40, 40, text="AN", font=("Arial", 24, "bold"), fill="white")
+        
+        tk.Label(header_frame, text="AutomataNexus Vibration Monitor", 
+                font=("Arial", 20, "bold"), fg=self.text_color, bg=self.bg_color).pack(pady=(10, 0))
+        tk.Label(header_frame, text="Enterprise-Grade ISO 10816-3 Compliant System", 
+                font=("Arial", 12), fg="#6b7280", bg=self.bg_color).pack()
+        
+        # Welcome message
+        welcome_text = tk.Label(welcome_frame, 
+                               text="Welcome to the AutomataNexus Vibration Monitor installer.\n" +
+                                    "This wizard will guide you through the installation process.",
+                               font=("Arial", 11), fg=self.text_color, bg=self.bg_color,
+                               justify="center")
+        welcome_text.pack(pady=(0, 20))
+        
+        # License frame
+        license_frame = tk.LabelFrame(welcome_frame, text="Commercial License Agreement", 
+                                     font=("Arial", 12, "bold"), fg=self.text_color, bg=self.bg_color)
+        license_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        
+        # License text
+        license_text = tk.Text(license_frame, height=12, width=70, 
+                              font=("Courier", 9), bg="white", fg=self.text_color,
+                              wrap=tk.WORD, relief=tk.FLAT, bd=1)
+        license_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        
+        license_content = """COMMERCIAL LICENSE NOTICE
+
+© 2025 AutomataNexus AI & AutomataControls. All rights reserved.
+
+This software is commercially licensed, not open source. By installing and using this software, you agree to the following terms:
+
+1. LICENSE REQUIRED: A valid commercial license is required for production use.
+   - Professional License: $500-$1,500 (up to 5 sensors)
+   - Business License: $2,500-$5,000 (up to 16 sensors per location)
+   - Enterprise License: $10,000+ (unlimited sensors)
+
+2. EVALUATION PERIOD: You may evaluate this software for 30 days without a license.
+
+3. RESTRICTIONS: You may NOT:
+   - Distribute or resell this software
+   - Reverse engineer or modify the code
+   - Remove copyright notices
+   - Use without a valid license after evaluation
+
+4. WARRANTY DISCLAIMER: This software is provided "AS IS" without warranty of any kind.
+
+5. INDUSTRIAL USE: Proper installation by qualified personnel is required. We are not responsible for equipment damage or safety issues.
+
+For licensing inquiries: DevOps@automatacontrols.com
+Full license terms: See COMMERCIAL.md
+
+By clicking "I Accept", you acknowledge that you have read and agree to these terms."""
+        
+        license_text.insert("1.0", license_content)
+        license_text.config(state=tk.DISABLED)
+        
+        # License acceptance checkbox
+        self.accept_var = tk.BooleanVar()
+        accept_check = tk.Checkbutton(welcome_frame, 
+                                     text="I have read and accept the license agreement",
+                                     variable=self.accept_var, font=("Arial", 11),
+                                     fg=self.text_color, bg=self.bg_color,
+                                     command=self.check_accept_button)
+        accept_check.pack()
+        
+        # Buttons
+        button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
+        button_frame.pack(fill=tk.X, pady=(20, 0))
+        
+        self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
+                                              font=("Arial", 12), bg="#e5e7eb", 
+                                              fg=self.text_color, padx=30, pady=10,
+                                              relief=tk.FLAT, command=self.root.quit)
+        self.cancel_welcome_button.pack(side=tk.LEFT)
+        
+        self.accept_button = tk.Button(button_frame, text="I Accept", 
+                                      font=("Arial", 12, "bold"), 
+                                      bg=self.primary_color, fg="white",
+                                      padx=30, pady=10, relief=tk.FLAT,
+                                      state=tk.DISABLED,
+                                      command=self.accept_license)
+        self.accept_button.pack(side=tk.RIGHT)
+        
+    def check_accept_button(self):
+        """Enable/disable accept button based on checkbox"""
+        if self.accept_var.get():
+            self.accept_button.config(state=tk.NORMAL)
+        else:
+            self.accept_button.config(state=tk.DISABLED)
+            
+    def accept_license(self):
+        """User accepted license, show main installer"""
+        self.accepted_license = True
+        
+        # Clear welcome screen
+        for widget in self.root.winfo_children():
+            widget.destroy()
+            
+        # Create main installer interface
+        self.main_frame = tk.Frame(self.root, bg=self.bg_color)
+        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Header with logo
+        self.create_header()
+        
+        # Progress section
+        self.create_progress_section()
+        
+        # Log section
+        self.create_log_section()
+        
+        # Buttons
+        self.create_buttons()
+        
+        # Setup installation steps
+        self.steps = [
+            ("Updating system packages...", self.update_system),
+            ("Installing dependencies...", self.install_dependencies),
+            ("Installing Python packages...", self.install_python_packages),
+            ("Creating directories...", self.create_directories),
+            ("Cloning repository...", self.clone_repository),
+            ("Setting up service...", self.setup_service),
+            ("Configuring permissions...", self.configure_permissions),
+            ("Creating shortcuts...", self.create_shortcuts),
+            ("Finalizing installation...", self.finalize_installation)
+        ]
+        
+        self.current_step = 0
+        self.installation_complete = False
         
     def log(self, message, tag="info"):
         self.log_text.insert(tk.END, f"{message}\n", tag)
