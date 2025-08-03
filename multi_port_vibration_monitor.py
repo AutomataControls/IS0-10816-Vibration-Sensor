@@ -893,11 +893,17 @@ class MultiPortVibrationMonitor:
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Authenticate and receive JWT token"""
-    if not AUTH_ENABLED:
-        return jsonify({'auth_required': False, 'message': 'Authentication disabled'}), 200
-        
-    data = request.get_json()
-    password = data.get('password', '')
+    try:
+        if not AUTH_ENABLED:
+            return jsonify({'auth_required': False, 'message': 'Authentication disabled'}), 200
+            
+        data = request.get_json(force=True)
+        if not data:
+            return jsonify({'error': 'Invalid JSON request'}), 400
+            
+        password = data.get('password', '')
+    except Exception as e:
+        return jsonify({'error': f'Request parsing error: {str(e)}'}), 400
     
     if not password:
         return jsonify({'error': 'Password required'}), 400
@@ -925,11 +931,13 @@ def login():
     # Add to active tokens
     active_tokens.add(token)
     
-    return jsonify({
+    response = jsonify({
         'token': token,
         'expires_at': expiry.isoformat(),
         'expires_in': TOKEN_EXPIRY_HOURS * 3600
-    }), 200
+    })
+    response.headers['Content-Type'] = 'application/json'
+    return response, 200
 
 @app.route('/api/auth/logout', methods=['POST'])
 @require_auth
@@ -945,10 +953,12 @@ def logout():
 @app.route('/api/auth/status', methods=['GET'])
 def auth_status():
     """Check if authentication is enabled"""
-    return jsonify({
+    response = jsonify({
         'auth_enabled': AUTH_ENABLED,
         'auth_configured': bool(PASSWORD_HASH)
-    }), 200
+    })
+    response.headers['Content-Type'] = 'application/json'
+    return response, 200
 
 @app.route('/monitoring-app.html')
 def serve_monitoring_app():

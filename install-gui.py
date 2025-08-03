@@ -575,7 +575,7 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         # Check if we're already in the repository
         current_dir = os.getcwd()
         if "IS0-10816-Vibration-Sensor" in current_dir:
-            self.log("Already in repository, copying files...")
+            self.log("Already in repository, copying necessary files...")
             # First check if the target directory already exists
             target_dir = "/opt/automatanexus/IS0-10816-Vibration-Sensor"
             self.run_command(f"sudo rm -rf {target_dir}")
@@ -583,14 +583,45 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             # Create the target directory
             self.run_command(f"sudo mkdir -p {target_dir}")
             
-            # Copy all files from current directory to installation location
-            success, output = self.run_command(f"sudo cp -r . {target_dir}/")
-            if not success:
-                self.log(f"✗ Failed to copy files: {output}", "error")
-                return False
+            # Define necessary runtime files
+            runtime_files = [
+                "multi_port_vibration_monitor.py",
+                "monitoring-app.html",
+                "automata-nexus-logo.png",
+                "requirements.txt",
+                "LICENSE",
+                "LICENSE.md",
+                "COMMERCIAL.md",
+                "README.md",
+                "uninstall.sh",
+                "show-network-info.sh"
+            ]
+            
+            # Define necessary directories
+            runtime_dirs = [
+                "docs",
+                "tools"  # Contains diagnostic tools
+            ]
+            
+            # Copy individual files
+            for file in runtime_files:
+                if os.path.exists(file):
+                    self.run_command(f"sudo cp {file} {target_dir}/")
+            
+            # Copy directories
+            for dir_name in runtime_dirs:
+                if os.path.exists(dir_name):
+                    self.run_command(f"sudo cp -r {dir_name} {target_dir}/")
+            
+            # Copy Node-RED package if user wants it (could be optional)
+            if os.path.exists("node-red-contrib-automatanexus-hvac-vibration"):
+                self.run_command(f"sudo cp -r node-red-contrib-automatanexus-hvac-vibration {target_dir}/")
+            if os.path.exists("node-red-examples.json"):
+                self.run_command(f"sudo cp node-red-examples.json {target_dir}/")
                 
             # Set proper ownership
             self.run_command(f"sudo chown -R {os.environ.get('USER', 'pi')}:{os.environ.get('USER', 'pi')} {target_dir}")
+            self.log("✓ Runtime files copied", "success")
         else:
             # Clone fresh repository
             self.log("Cloning repository...")
@@ -599,6 +630,44 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             if not success:
                 self.log("✗ Failed to clone repository", "error")
                 return False
+                
+            # Clean up development files after cloning
+            target_dir = "/opt/automatanexus/IS0-10816-Vibration-Sensor"
+            dev_files = [
+                "build-release.sh",
+                "cleanup-dev-install.sh", 
+                "create-icon.py",
+                "create-release.sh",
+                "install-dependencies.sh",
+                "install-desktop-linux.sh",
+                "install-gui.py",
+                "install-on-pi.sh",
+                "install.sh",
+                "install-system-packages.sh",
+                "publish-npm-alpha.sh",
+                "uninstall-gui.py",
+                "uninstall-master.sh",
+                "vibration-monitor-desktop.py",
+                "RELEASE_NOTES.md",
+                "EULA.md",
+                ".gitattributes",
+                ".gitignore"
+            ]
+            
+            dev_dirs = [
+                "IS0-10816-Vibration-Monitor-UI",
+                ".git"
+            ]
+            
+            # Remove development files
+            for file in dev_files:
+                self.run_command(f"sudo rm -f {target_dir}/{file}")
+                
+            # Remove development directories
+            for dir_name in dev_dirs:
+                self.run_command(f"sudo rm -rf {target_dir}/{dir_name}")
+                
+            self.log("✓ Development files removed", "success")
                 
         # Make scripts executable
         self.log("Making scripts executable...")
