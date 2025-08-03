@@ -1,0 +1,22 @@
+# Files to exclude from release archives
+create-icon.py export-ignore
+create-release.sh export-ignore
+publish-npm-alpha.sh export-ignore
+cleanup-dev-install.sh export-ignore
+fix-pil.sh export-ignore
+install-dependencies.sh export-ignore
+install-desktop-linux.sh export-ignore
+install-system-packages.sh export-ignore
+vibration-monitor-desktop.py export-ignore
+build-release.sh export-ignore
+tools/ export-ignore
+IS0-10816-Vibration-Monitor-UI/ export-ignore
+docs/ export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+
+# Development files
+*.log export-ignore
+*.csv export-ignore
+__pycache__/ export-ignore
+*.pyc export-ignore
