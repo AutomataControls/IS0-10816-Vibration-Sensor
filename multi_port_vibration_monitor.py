@@ -831,64 +831,58 @@ class MultiPortVibrationMonitor:
             except:
                 device_ip = "unknown"
             
-            # Aggregate metrics from all sensors
-            total_velocity = 0
-            max_velocity = 0
-            total_accel = 0
-            max_accel = 0
-            avg_temp = 0
-            sensor_count = 0
-            alert_status = "Normal"
+            # Build line protocol for each sensor
+            line_protocols = []
             
             for port, reading in self.latest_readings.items():
-                if reading:
-                    sensor_count += 1
-                    total_velocity += reading.velocity_mms
-                    max_velocity = max(max_velocity, reading.velocity_mms)
-                    total_accel += reading.rms_acceleration
-                    max_accel = max(max_accel, reading.rms_acceleration)
-                    avg_temp += reading.temperature
+                if reading and port in self.equipment_configs:
+                    config = self.equipment_configs[port]
                     
-                    # Check for alerts
-                    if reading.iso_zone in ['C', 'D']:
-                        alert_status = f"Warning-Zone{reading.iso_zone}"
+                    # Determine alert status for this sensor
+                    alert_status = "Normal"
+                    if reading.iso_zone == 'C':
+                        alert_status = "Warning-ZoneC"
+                    elif reading.iso_zone == 'D':
+                        alert_status = "Critical-ZoneD"
+                    
+                    # Build InfluxDB line protocol for this sensor
+                    line_protocol = (
+                        f"vibration_metrics,"
+                        f"location={self.bms_config['location_name']},"
+                        f"system={config.equipment_name},"  # Use sensor's configured name
+                        f"equipment_type={config.equipment_type},"
+                        f"location_id={self.bms_config['location_id']},"
+                        f"equipmentId={self.bms_config['equipment_id']},"
+                        f"sensor_port={port} "  # Space after tags is important!
+                        f"velocity_mms={reading.velocity_mms:.2f},"
+                        f"acceleration_g={reading.rms_acceleration:.3f},"
+                        f"temperature_f={reading.temperature:.1f},"
+                        f"iso_zone=\"{reading.iso_zone}\","
+                        f"alert_status=\"{alert_status}\","
+                        f"motor_hp={config.hp},"
+                        f"motor_voltage={config.voltage},"
+                        f"motor_phase={config.phase},"
+                        f"monitoring_enabled=true,"
+                        f"command_type=\"metrics\","
+                        f"source=\"vibration-monitor-{device_ip}\""
+                    )
+                    
+                    line_protocols.append(line_protocol)
             
-            if sensor_count > 0:
-                avg_velocity = total_velocity / sensor_count
-                avg_accel = total_accel / sensor_count
-                avg_temp = avg_temp / sensor_count
+            if line_protocols:
+                # Send all sensor data in one request (multiple lines)
+                all_data = '\n'.join(line_protocols)
                 
-                # Build InfluxDB line protocol
-                line_protocol = (
-                    f"vibration_metrics,"
-                    f"location={self.bms_config['location_name']},"
-                    f"system={self.bms_config['system_name']},"
-                    f"equipment_type=vibration_monitor,"
-                    f"location_id={self.bms_config['location_id']},"
-                    f"equipmentId={self.bms_config['equipment_id']} "
-                    f"avg_velocity_mms={avg_velocity:.2f},"
-                    f"max_velocity_mms={max_velocity:.2f},"
-                    f"avg_acceleration_g={avg_accel:.3f},"
-                    f"max_acceleration_g={max_accel:.3f},"
-                    f"temperature_f={avg_temp:.1f},"
-                    f"sensor_count={sensor_count},"
-                    f"alert_status=\"{alert_status}\","
-                    f"monitoring_enabled=true,"
-                    f"command_type=\"metrics\","
-                    f"source=\"vibration-monitor-{device_ip}\""
-                )
-                
-                # Send to BMS
                 response = requests.post(
                     self.bms_config['url'],
-                    data=line_protocol,
+                    data=all_data,
                     headers={'Content-Type': 'text/plain'},
                     timeout=5
                 )
                 
                 if response.status_code in [200, 204]:
                     self.bms_config['last_send'] = now.isoformat()
-                    print(f"Sent metrics to BMS: {sensor_count} sensors, avg velocity: {avg_velocity:.2f} mm/s")
+                    print(f"Sent {len(line_protocols)} sensor metrics to BMS")
                 else:
                     print(f"BMS send failed: {response.status_code} - {response.text}")
                     
