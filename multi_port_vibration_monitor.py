@@ -2090,10 +2090,11 @@ def get_bms_config(port):
         return jsonify({'error': 'Monitor not initialized'}), 500
     
     # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
-    if not port.startswith('/'):
-        port = f'/dev/{port}'
-    elif not port.startswith('/dev/'):
-        port = f'/dev{port}'
+    if not port.startswith('/dev/'):
+        if port.startswith('/'):
+            port = f'/dev{port}'  # '/ttyUSB0' -> '/dev/ttyUSB0'
+        else:
+            port = f'/dev/{port}'  # 'ttyUSB0' -> '/dev/ttyUSB0'
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
@@ -2123,10 +2124,11 @@ def set_bms_config(port):
         return jsonify({'error': 'Monitor not initialized'}), 500
     
     # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
-    if not port.startswith('/'):
-        port = f'/dev/{port}'
-    elif not port.startswith('/dev/'):
-        port = f'/dev{port}'
+    if not port.startswith('/dev/'):
+        if port.startswith('/'):
+            port = f'/dev{port}'  # '/ttyUSB0' -> '/dev/ttyUSB0'
+        else:
+            port = f'/dev/{port}'  # 'ttyUSB0' -> '/dev/ttyUSB0'
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
