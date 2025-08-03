@@ -65,3 +65,42 @@ package-lock.json
 *.key
 *.crt
 *.pfx
+
+# Development and build files to exclude
+install-dependencies.sh
+install-system-packages.sh
+install-on-pi.sh
+install-desktop-linux.sh
+uninstall-master.sh
+show-network-info.sh
+publish-npm-alpha.sh
+vibration-monitor-desktop.py
+vibration-monitor.desktop
+node-red-examples.json
+backend.log
+
+# Build artifacts
+*.tgz
+*.tar.gz
+*.zip
+
+# Directories to exclude
+IS0-10816-Vibration-Monitor-UI/
+node-red-contrib-automatanexus-hvac-vibration/
+.claude/
+
+# Test files
+test-*
+*-test.*
+*.test
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files (except requirements.txt)
+*.ini
+*.conf
+config.json
+!requirements.txt
