@@ -742,7 +742,10 @@
                     loadConfig();
                     
                     // Switch to monitoring tab
-                    showSection('monitoring');
+                    document.getElementById('config').classList.remove('active');
+                    document.getElementById('monitoring').classList.add('active');
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelector('.tab').classList.add('active');
                     
                     // Start monitoring automatically
                     startMonitoring();
