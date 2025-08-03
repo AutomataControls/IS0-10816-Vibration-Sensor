@@ -384,17 +384,17 @@
                     const phase = sensor.configured ? sensor.phase : 3;
                     
                     return `
-                        <div class="sensor-card">
+                        <div class="sensor-card" data-port="${sensor.port}">
                             <h3>${sensor.port} ${sensor.configured ? '✓' : ''}</h3>
-                            <form onsubmit="saveConfig('${sensor.port}', event)">
+                            <div class="sensor-config-form">
                                 <div class="form-group">
                                     <label>Equipment Name</label>
-                                    <input type="text" name="equipment_name" required 
+                                    <input type="text" name="equipment_name" id="name_${sensor.port}" required 
                                            placeholder="e.g., Cooling_Tower_1" value="${name}">
                                 </div>
                                 <div class="form-group">
                                     <label>Equipment Type</label>
-                                    <select name="equipment_type" required>
+                                    <select name="equipment_type" id="type_${sensor.port}" required>
                                         <option value="cooling_tower_motor" ${type === 'cooling_tower_motor' ? 'selected' : ''}>Cooling Tower Motor</option>
                                         <option value="centrifugal_pump" ${type === 'centrifugal_pump' ? 'selected' : ''}>Centrifugal Pump</option>
                                         <option value="reciprocating_compressor" ${type === 'reciprocating_compressor' ? 'selected' : ''}>Reciprocating Compressor</option>
@@ -407,11 +407,11 @@
                                 </div>
                                 <div class="form-group">
                                     <label>HP</label>
-                                    <input type="number" name="hp" required min="3" max="50" value="${hp}">
+                                    <input type="number" name="hp" id="hp_${sensor.port}" required min="3" max="50" value="${hp}">
                                 </div>
                                 <div class="form-group">
                                     <label>Voltage</label>
-                                    <select name="voltage" required>
+                                    <select name="voltage" id="voltage_${sensor.port}" required>
                                         <option value="208" ${voltage == 208 ? 'selected' : ''}>208V</option>
                                         <option value="230" ${voltage == 230 ? 'selected' : ''}>230V</option>
                                         <option value="460" ${voltage == 460 ? 'selected' : ''}>460V</option>
@@ -420,21 +420,100 @@
                                 </div>
                                 <div class="form-group">
                                     <label>Phase</label>
-                                    <select name="phase" required>
+                                    <select name="phase" id="phase_${sensor.port}" required>
                                         <option value="1" ${phase == 1 ? 'selected' : ''}>Single Phase</option>
                                         <option value="3" ${phase == 3 ? 'selected' : ''}>Three Phase</option>
                                     </select>
                                 </div>
-                                <button type="submit" class="btn">${sensor.configured ? 'Update' : 'Save'} Configuration</button>
-                            </form>
+                            </div>
                         </div>
                     `;
                 }).join('');
+                
+                // Add Save All button at the bottom
+                container.innerHTML += `
+                    <div style="margin-top: 2rem; text-align: center;">
+                        <button class="btn" onclick="saveAllConfigurations()" style="padding: 1rem 2rem; font-size: 1.1rem; background: #28a745;">
+                            💾 Save All Configurations
+                        </button>
+                    </div>
+                `;
             } catch (error) {
                 alert('Error scanning ports: ' + error.message);
             }
         }
 
+        async function saveAllConfigurations() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
+                
+                if (!status.sensors || status.sensors.length === 0) {
+                    alert('No sensors detected to configure.');
+                    return;
+                }
+                
+                let allSuccess = true;
+                let configuredCount = 0;
+                
+                // Save each sensor configuration
+                for (const sensor of status.sensors) {
+                    const port = sensor.port;
+                    const name = document.getElementById(`name_${port}`).value;
+                    const type = document.getElementById(`type_${port}`).value;
+                    const hp = document.getElementById(`hp_${port}`).value;
+                    const voltage = document.getElementById(`voltage_${port}`).value;
+                    const phase = document.getElementById(`phase_${port}`).value;
+                    
+                    if (!name || !hp) {
+                        alert(`Please fill in all required fields for ${port}`);
+                        allSuccess = false;
+                        break;
+                    }
+                    
+                    const config = {
+                        port: port,
+                        equipment_name: name,
+                        equipment_type: type,
+                        hp: parseInt(hp),
+                        voltage: parseInt(voltage),
+                        phase: parseInt(phase),
+                        rpm: 1800,
+                        mounting: 'rigid'
+                    };
+                    
+                    const configResponse = await fetch(`${API_BASE}/configure`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+                    
+                    const result = await configResponse.json();
+                    if (result.success) {
+                        configuredCount++;
+                    } else {
+                        allSuccess = false;
+                        alert(`Failed to configure ${port}: ${result.error || 'Unknown error'}`);
+                        break;
+                    }
+                }
+                
+                if (allSuccess) {
+                    alert(`Successfully configured ${configuredCount} sensor(s)!`);
+                    // Reload the page to show updated configurations
+                    loadConfig();
+                    
+                    // Switch to monitoring tab
+                    showSection('monitoring');
+                    
+                    // Start monitoring automatically
+                    startMonitoring();
+                }
+            } catch (error) {
+                alert('Error saving configurations: ' + error.message);
+            }
+        }
+        
         async function saveConfig(port, event) {
             event.preventDefault();
             const formData = new FormData(event.target);
