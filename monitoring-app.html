@@ -259,8 +259,10 @@
         <div class="login-form">
             <h2>API Authentication Required</h2>
             <div id="login-error" class="error"></div>
-            <input type="password" id="api-password" placeholder="Enter API password" onkeypress="if(event.key==='Enter')login()">
-            <button onclick="login()">Login</button>
+            <form onsubmit="event.preventDefault(); login();" style="margin: 0;">
+                <input type="password" id="api-password" placeholder="Enter API password" autocomplete="current-password">
+                <button type="submit">Login</button>
+            </form>
         </div>
     </div>
     
@@ -1119,7 +1121,10 @@
                 const readings = await readingsResponse.json();
                 
                 container.innerHTML = status.sensors.map(sensor => {
-                    const port = sensor.port.replace('/dev/', '');
+                    // Ensure we properly extract the port without /dev/ prefix
+                    const port = sensor.port.startsWith('/dev/') 
+                        ? sensor.port.substring(5)  // Remove '/dev/' prefix
+                        : sensor.port;
                     const sensorName = sensor.name || port.toUpperCase();
                     
                     // Get current reading for this sensor
@@ -1190,7 +1195,10 @@
                 
                 // Load calibration values for each sensor
                 status.sensors.forEach(sensor => {
-                    const port = sensor.port.replace('/dev/', '');
+                    // Remove /dev/ prefix if present to avoid double slashes
+                    const port = sensor.port.startsWith('/dev/') 
+                        ? sensor.port.substring(5)  // Remove '/dev/' prefix
+                        : sensor.port;
                     loadCalibrationValues(port);
                 });
                 
