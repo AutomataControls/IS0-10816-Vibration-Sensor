@@ -368,21 +368,22 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
         button_frame.pack(fill=tk.X, pady=(20, 0))
         
+        # Create button with larger font and explicit height
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
-                                              font=("Arial", 12), bg="#e5e7eb", 
-                                              fg=self.text_color, padx=50, pady=20,
+                                              font=("Arial", 14), bg="#e5e7eb", 
+                                              fg=self.text_color, 
                                               relief=tk.FLAT, command=self.root.quit,
-                                              height=2)
-        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10)
+                                              width=12, height=3)
+        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10, pady=5, ipady=10)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
-                                      font=("Arial", 12, "bold"), 
+                                      font=("Arial", 14, "bold"), 
                                       bg=self.primary_color, fg="white",
-                                      padx=50, pady=20, relief=tk.FLAT,
+                                      relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license,
-                                      height=2)
-        self.accept_button.pack(side=tk.RIGHT, padx=10)
+                                      width=12, height=3)
+        self.accept_button.pack(side=tk.RIGHT, padx=10, pady=5, ipady=10)
         
     def check_accept_button(self):
         """Enable/disable accept button based on checkbox"""
