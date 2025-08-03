@@ -188,6 +188,7 @@ class InstallerWindow:
         self.log_text.tag_configure("success", foreground="#10b981")
         self.log_text.tag_configure("error", foreground="#ef4444")
         self.log_text.tag_configure("info", foreground="#3b82f6")
+        self.log_text.tag_configure("warning", foreground="#f59e0b")
         
     def create_buttons(self):
         button_frame = tk.Frame(self.main_frame, bg=self.bg_color)
@@ -258,24 +259,76 @@ class InstallerWindow:
         
     def install_dependencies(self):
         self.log("Installing required packages...")
-        packages = [
+        
+        # Core packages that must be installed
+        core_packages = [
             "python3", "python3-pip", "python3-venv",
-            "git", "curl", "nodejs", "npm", "chromium-browser",
-            "sqlite3", "python3-tk", "python3-pil", "python3-pil.imagetk",
+            "git", "curl", "sqlite3"
+        ]
+        
+        # Python packages
+        python_packages = [
+            "python3-tk", "python3-pil", "python3-pil.imagetk",
             "python3-numpy", "python3-scipy", "python3-pandas",
             "python3-flask", "python3-flask-cors", "python3-serial",
             "python3-dotenv"
         ]
         
-        # Install all packages in one command for efficiency
-        pkg_list = " ".join(packages)
-        self.log(f"Installing system packages...")
-        success, _ = self.run_command(f"sudo apt install -y {pkg_list}")
+        # Optional packages (may have conflicts)
+        optional_packages = [
+            "nodejs", "npm", "chromium-browser"
+        ]
+        
+        # Install core packages
+        self.log("Installing core packages...")
+        for pkg in core_packages:
+            self.log(f"  Installing {pkg}...")
+            success, output = self.run_command(f"sudo apt install -y {pkg}")
+            if not success:
+                self.log(f"  ✗ Failed: {pkg} - {output}", "error")
+                return False
+        
+        # Install Python packages
+        self.log("Installing Python packages...")
+        for pkg in python_packages:
+            self.log(f"  Installing {pkg}...")
+            success, output = self.run_command(f"sudo apt install -y {pkg}")
+            if not success:
+                self.log(f"  ⚠ Warning: {pkg} failed, will try pip later", "warning")
+        
+        # Try optional packages individually
+        self.log("Installing optional packages...")
+        
+        # Handle Node.js/npm conflicts
+        self.log("  Checking Node.js installation...")
+        success, output = self.run_command("which node")
         if not success:
-            self.log(f"✗ Failed to install some packages", "error")
-            return False
+            # Try to install nodejs
+            self.log("  Installing Node.js...")
+            success, output = self.run_command("sudo apt install -y nodejs")
+            if not success:
+                self.log("  ⚠ Node.js installation failed - Node-RED features may not work", "warning")
+        
+        # Try npm separately
+        success, output = self.run_command("which npm")
+        if not success:
+            self.log("  Installing npm...")
+            # First remove any conflicting packages
+            self.run_command("sudo apt remove -y npm nodejs-legacy libnode72", shell=True)
+            success, output = self.run_command("sudo apt install -y npm")
+            if not success:
+                self.log("  ⚠ npm installation failed - Node-RED features may not work", "warning")
+        
+        # Chromium browser
+        self.log("  Checking browser...")
+        success, output = self.run_command("which chromium-browser || which chromium")
+        if not success:
+            self.log("  Installing Chromium...")
+            success, output = self.run_command("sudo apt install -y chromium-browser || sudo apt install -y chromium")
+            if not success:
+                self.log("  ⚠ Chromium installation failed - web UI will open in default browser", "warning")
                 
-        self.log("✓ All dependencies installed", "success")
+        self.log("✓ Core dependencies installed", "success")
         return True
         
     def install_python_packages(self):
