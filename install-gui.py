@@ -268,25 +268,30 @@ class InstallerWindow:
         
         # Try to load logo
         logo_loaded = False
-        try:
-            logo_paths = [
-                "automata-nexus-logo.png",
-                os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png"),
-                os.path.join(os.getcwd(), "automata-nexus-logo.png"),
-                "/home/Automata/IS0-10816-Vibration-Sensor/automata-nexus-logo.png"
-            ]
-            for logo_path in logo_paths:
-                if os.path.exists(logo_path):
-                    if PIL_AVAILABLE:
-                        img = Image.open(logo_path)
-                        img = img.resize((80, 80), Image.Resampling.LANCZOS)
-                        self.welcome_logo = ImageTk.PhotoImage(img)
-                        logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
-                        logo_label.pack()
-                        logo_loaded = True
-                        break
-        except:
-            pass
+        if PIL_AVAILABLE:
+            try:
+                logo_paths = [
+                    "automata-nexus-logo.png",
+                    os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png"),
+                    os.path.join(os.getcwd(), "automata-nexus-logo.png"),
+                    "/home/Automata/IS0-10816-Vibration-Sensor/automata-nexus-logo.png",
+                    os.path.expanduser("~/IS0-10816-Vibration-Sensor/automata-nexus-logo.png")
+                ]
+                for logo_path in logo_paths:
+                    if os.path.exists(logo_path):
+                        try:
+                            img = Image.open(logo_path)
+                            img = img.resize((80, 80), Image.Resampling.LANCZOS)
+                            self.welcome_logo = ImageTk.PhotoImage(img)
+                            logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
+                            logo_label.pack()
+                            logo_loaded = True
+                            print(f"Logo loaded from: {logo_path}")
+                            break
+                        except Exception as e:
+                            print(f"Failed to load logo from {logo_path}: {e}")
+            except Exception as e:
+                print(f"Logo loading error: {e}")
             
         if not logo_loaded:
             # Fallback logo
@@ -365,17 +370,19 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
                                               font=("Arial", 12), bg="#e5e7eb", 
-                                              fg=self.text_color, padx=40, pady=15,
-                                              relief=tk.FLAT, command=self.root.quit)
-        self.cancel_welcome_button.pack(side=tk.LEFT)
+                                              fg=self.text_color, padx=50, pady=20,
+                                              relief=tk.FLAT, command=self.root.quit,
+                                              height=2)
+        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
                                       font=("Arial", 12, "bold"), 
                                       bg=self.primary_color, fg="white",
-                                      padx=40, pady=15, relief=tk.FLAT,
+                                      padx=50, pady=20, relief=tk.FLAT,
                                       state=tk.DISABLED,
-                                      command=self.accept_license)
-        self.accept_button.pack(side=tk.RIGHT)
+                                      command=self.accept_license,
+                                      height=2)
+        self.accept_button.pack(side=tk.RIGHT, padx=10)
         
     def check_accept_button(self):
         """Enable/disable accept button based on checkbox"""
