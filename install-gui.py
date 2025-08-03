@@ -577,10 +577,7 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             self.log("Already in repository, copying files...")
             # Copy current directory to installation location
             success, output = self.run_command(f"sudo cp -r {current_dir} /opt/automatanexus/")
-            if success:
-                self.log("✓ Files copied successfully", "success")
-                return True
-            else:
+            if not success:
                 self.log(f"✗ Failed to copy files: {output}", "error")
                 return False
         else:
@@ -588,12 +585,35 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             self.log("Cloning repository...")
             os.chdir("/opt/automatanexus")
             success, _ = self.run_command("git clone https://github.com/AutomataControls/IS0-10816-Vibration-Sensor.git")
-            if success:
-                self.log("✓ Repository cloned successfully", "success")
-                return True
-            else:
+            if not success:
                 self.log("✗ Failed to clone repository", "error")
                 return False
+                
+        # Make scripts executable
+        self.log("Making scripts executable...")
+        scripts = [
+            "multi_port_vibration_monitor.py",
+            "install.sh",
+            "install-gui.py",
+            "install-on-pi.sh",
+            "uninstall.sh"
+        ]
+        
+        for script in scripts:
+            script_path = f"/opt/automatanexus/IS0-10816-Vibration-Sensor/{script}"
+            self.run_command(f"sudo chmod +x {script_path}")
+            
+        # Set up database
+        self.log("Setting up database...")
+        db_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_metrics.db"
+        
+        # Create empty database file with proper permissions
+        self.run_command(f"sudo touch {db_path}")
+        self.run_command(f"sudo chmod 666 {db_path}")
+        self.run_command(f"sudo chown {os.environ.get('USER', 'pi')}:{os.environ.get('USER', 'pi')} {db_path}")
+        
+        self.log("✓ Repository setup complete", "success")
+        return True
             
     def setup_service(self):
         self.log("Setting up systemd service...")
@@ -633,13 +653,28 @@ WantedBy=multi-user.target"""
     def configure_permissions(self):
         self.log("Configuring permissions...")
         user = os.environ.get('USER', 'pi')
+        
+        # Add user to dialout group for USB access
         success, _ = self.run_command(f"sudo usermod -a -G dialout {user}")
-        if success:
-            self.log("✓ Permissions configured", "success")
-            return True
-        else:
-            self.log("✗ Failed to configure permissions", "error")
+        if not success:
+            self.log("✗ Failed to add user to dialout group", "error")
             return False
+            
+        # Set proper ownership and permissions on the entire directory
+        app_dir = "/opt/automatanexus/IS0-10816-Vibration-Sensor"
+        self.log("Setting directory permissions...")
+        
+        # Change ownership of the entire directory to the user
+        self.run_command(f"sudo chown -R {user}:{user} {app_dir}")
+        
+        # Ensure the directory is writable for CSV files
+        self.run_command(f"sudo chmod -R 755 {app_dir}")
+        
+        # Make sure the database is writable
+        self.run_command(f"sudo chmod 666 {app_dir}/vibration_metrics.db")
+        
+        self.log("✓ Permissions configured", "success")
+        return True
             
     def create_shortcuts(self):
         self.log("Creating desktop shortcuts...")
