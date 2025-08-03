@@ -888,15 +888,20 @@ class MultiPortVibrationMonitor:
                     elif reading.iso_zone == 'D':
                         alert_status = "Critical-ZoneD"
                     
+                    # Don't escape spaces - just use the values as-is for tags
+                    location_name = config.bms_location_name
+                    system_name = config.equipment_name
+                    equipment_type = config.equipment_type
+                    
                     # Build InfluxDB line protocol for this sensor
+                    # Format: measurement,tag1=value1,tag2=value2 field1=value1,field2="string_value"
                     line_protocol = (
-                        f"vibration_metrics,"
-                        f"location={config.bms_location_name},"
-                        f"system={config.equipment_name},"  # Use sensor's configured name
-                        f"equipment_type={config.equipment_type},"
+                        f"metrics,"
+                        f"location={location_name},"
+                        f"system={system_name},"  # Use sensor's configured name
+                        f"equipment_type={equipment_type},"
                         f"location_id={config.bms_location_id},"
-                        f"equipmentId={config.bms_equipment_id},"
-                        f"sensor_port={port} "  # Space after tags is important!
+                        f"equipmentId={config.bms_equipment_id} "  # Space after tags is CRITICAL!
                         f"velocity_mms={reading.velocity_mms:.2f},"
                         f"acceleration_g={reading.rms_acceleration:.3f},"
                         f"temperature_f={reading.temperature:.1f},"
@@ -1995,9 +2000,25 @@ def get_calibration(port):
     
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    # Normalize port path - add /dev/ prefix if not present
+    if not port.startswith('/dev/'):
+        port = f'/dev/{port}'
         
     if port not in monitor_instance.equipment_configs:
-        return jsonify({'error': f'Port {port} not configured'}), 404
+        # Try to find a default config if sensor exists but not configured
+        if port in monitor_instance.serial_connections:
+            return jsonify({
+                'port': port,
+                'equipment_name': port.split('/')[-1].upper(),
+                'velocity_offset': 0,
+                'velocity_scale': 1.0,
+                'accel_offset': 0,
+                'accel_scale': 1.0,
+                'baseline_velocity': 0,
+                'baseline_accel': 0
+            })
+        return jsonify({'error': f'Port {port} not found'}), 404
         
     config = monitor_instance.equipment_configs[port]
     
@@ -2020,9 +2041,24 @@ def set_calibration(port):
     
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    # Normalize port path - add /dev/ prefix if not present
+    if not port.startswith('/dev/'):
+        port = f'/dev/{port}'
         
+    # If port not in equipment configs, check if it exists in serial connections
     if port not in monitor_instance.equipment_configs:
-        return jsonify({'error': f'Port {port} not configured'}), 404
+        if port in monitor_instance.serial_connections:
+            # Create a default config for this sensor
+            monitor_instance.equipment_configs[port] = EquipmentConfig(
+                equipment_name=port.split('/')[-1].upper(),
+                equipment_type='motor',
+                hp=5.0,
+                voltage=480,
+                phase=3
+            )
+        else:
+            return jsonify({'error': f'Port {port} not found'}), 404
         
     data = request.get_json()
     config = monitor_instance.equipment_configs[port]
@@ -2053,9 +2089,24 @@ def zero_calibration(port):
     
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    # Normalize port path - add /dev/ prefix if not present
+    if not port.startswith('/dev/'):
+        port = f'/dev/{port}'
         
+    # If port not in equipment configs, check if it exists in serial connections
     if port not in monitor_instance.equipment_configs:
-        return jsonify({'error': f'Port {port} not configured'}), 404
+        if port in monitor_instance.serial_connections:
+            # Create a default config for this sensor
+            monitor_instance.equipment_configs[port] = EquipmentConfig(
+                equipment_name=port.split('/')[-1].upper(),
+                equipment_type='motor',
+                hp=5.0,
+                voltage=480,
+                phase=3
+            )
+        else:
+            return jsonify({'error': f'Port {port} not found'}), 404
         
     # Get current reading
     if port in monitor_instance.latest_readings:

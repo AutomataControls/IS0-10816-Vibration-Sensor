@@ -1101,6 +1101,106 @@
             }
         }
         
+        // Load calibration interface
+        async function loadCalibration() {
+            try {
+                const response = await authenticatedFetch(`${API_BASE}/status`);
+                const status = await response.json();
+                
+                const container = document.getElementById('calibration-list');
+                
+                if (!status.sensors || status.sensors.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; color: #666;"><p>No sensors detected.</p></div>';
+                    return;
+                }
+                
+                // Load current readings for live values
+                const readingsResponse = await authenticatedFetch(`${API_BASE}/readings`);
+                const readings = await readingsResponse.json();
+                
+                container.innerHTML = status.sensors.map(sensor => {
+                    const port = sensor.port.replace('/dev/', '');
+                    const sensorName = sensor.name || port.toUpperCase();
+                    
+                    // Get current reading for this sensor
+                    let currentVelocity = '--';
+                    let currentAccel = '--';
+                    
+                    // Find reading by matching port in sensor name
+                    Object.entries(readings).forEach(([name, reading]) => {
+                        if (name.includes(`(${port})`)) {
+                            currentVelocity = reading.velocity_mms.toFixed(2);
+                            currentAccel = reading.rms_acceleration.toFixed(3);
+                        }
+                    });
+                    
+                    return `
+                    <div class="sensor-card">
+                        <h3 style="margin-bottom: 1rem;">${sensorName}</h3>
+                        
+                        <div style="background: #f8f9fa; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+                            <h4 style="margin-bottom: 0.5rem; color: #666;">Current Values</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <span style="color: #999; font-size: 0.9rem;">Velocity</span>
+                                    <div style="font-size: 1.2rem; font-weight: bold;">
+                                        <span id="live-vel-${port}">${currentVelocity}</span> mm/s
+                                    </div>
+                                </div>
+                                <div>
+                                    <span style="color: #999; font-size: 0.9rem;">Acceleration</span>
+                                    <div style="font-size: 1.2rem; font-weight: bold;">
+                                        <span id="live-acc-${port}">${currentAccel}</span> g
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button class="btn" onclick="zeroSensor('${port}')" style="margin-bottom: 1rem; width: 100%;">
+                            🎯 Set Zero Point
+                        </button>
+                        
+                        <div style="border-top: 1px solid #eee; padding-top: 1rem; margin-top: 1rem;">
+                            <h4 style="margin-bottom: 0.5rem;">Advanced Calibration</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem;">Velocity Offset</label>
+                                    <input type="number" id="vel-offset-${port}" step="0.01" value="0" style="width: 100%; padding: 0.5rem;">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem;">Velocity Scale</label>
+                                    <input type="number" id="vel-scale-${port}" step="0.01" value="1.0" style="width: 100%; padding: 0.5rem;">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem;">Accel Offset</label>
+                                    <input type="number" id="acc-offset-${port}" step="0.001" value="0" style="width: 100%; padding: 0.5rem;">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem;">Accel Scale</label>
+                                    <input type="number" id="acc-scale-${port}" step="0.001" value="1.0" style="width: 100%; padding: 0.5rem;">
+                                </div>
+                            </div>
+                            <button class="btn" onclick="applyCalibration('${port}')" style="background: #28a745;">
+                                ✓ Apply Calibration
+                            </button>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                
+                // Load calibration values for each sensor
+                status.sensors.forEach(sensor => {
+                    const port = sensor.port.replace('/dev/', '');
+                    loadCalibrationValues(port);
+                });
+                
+            } catch (error) {
+                console.error('Error loading calibration:', error);
+                document.getElementById('calibration-list').innerHTML = 
+                    '<div style="text-align: center; color: #dc3545;"><p>Error loading calibration data</p></div>';
+            }
+        }
+        
         // Update live values in calibration tab
         function updateCalibrationLiveValues(data) {
             Object.entries(data).forEach(([name, sensor]) => {
@@ -1123,11 +1223,17 @@
             originalShowTab(tabName, btn);
             if (tabName === 'calibration') {
                 loadCalibration();
-                // Also load current sensor readings
-                authenticatedFetch(`${API_BASE}/readings`)
-                    .then(response => response.json())
-                    .then(data => updateCalibrationLiveValues(data))
-                    .catch(error => console.error('Error loading calibration readings:', error));
+                // Set up auto-refresh for calibration live values
+                if (updateInterval) clearInterval(updateInterval);
+                updateInterval = setInterval(() => {
+                    authenticatedFetch(`${API_BASE}/readings`)
+                        .then(response => response.json())
+                        .then(data => updateCalibrationLiveValues(data))
+                        .catch(error => console.error('Error updating calibration readings:', error));
+                }, 1000);
+            } else if (tabName === 'monitoring') {
+                // Clear calibration interval when switching away
+                if (updateInterval) clearInterval(updateInterval);
             }
         };
         
