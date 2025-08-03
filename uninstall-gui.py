@@ -25,7 +25,13 @@ import threading
 import os
 import sys
 import time
-from PIL import Image, ImageTk
+
+# Try to import PIL, but make it optional
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
 import io
 
 class UninstallerWindow:
