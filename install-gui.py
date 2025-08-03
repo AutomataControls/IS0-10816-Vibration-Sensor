@@ -260,31 +260,46 @@ class InstallerWindow:
         self.log("Installing required packages...")
         packages = [
             "python3", "python3-pip", "python3-venv",
-            "git", "curl", "nodejs", "npm", "chromium-browser"
+            "git", "curl", "nodejs", "npm", "chromium-browser",
+            "sqlite3", "python3-tk", "python3-pil", "python3-pil.imagetk",
+            "python3-numpy", "python3-scipy", "python3-pandas",
+            "python3-flask", "python3-flask-cors", "python3-serial",
+            "python3-dotenv"
         ]
         
-        for pkg in packages:
-            self.log(f"  Installing {pkg}...")
-            success, _ = self.run_command(f"sudo apt install -y {pkg}")
-            if not success:
-                self.log(f"✗ Failed to install {pkg}", "error")
-                return False
+        # Install all packages in one command for efficiency
+        pkg_list = " ".join(packages)
+        self.log(f"Installing system packages...")
+        success, _ = self.run_command(f"sudo apt install -y {pkg_list}")
+        if not success:
+            self.log(f"✗ Failed to install some packages", "error")
+            return False
                 
         self.log("✓ All dependencies installed", "success")
         return True
         
     def install_python_packages(self):
         self.log("Installing Python packages...")
-        packages = ["pyserial", "flask", "flask-cors", "numpy"]
+        packages = ["pyserial", "flask", "flask-cors", "numpy", "Pillow"]
         
+        # Check if packages are already installed via apt, only install missing ones via pip
         for pkg in packages:
-            self.log(f"  Installing {pkg}...")
-            success, _ = self.run_command(f"sudo pip3 install --break-system-packages {pkg}")
+            self.log(f"  Checking {pkg}...")
+            # First try importing to see if already available
+            check_cmd = f"python3 -c 'import {pkg.lower()}' 2>/dev/null"
+            if pkg == "Pillow":
+                check_cmd = "python3 -c 'import PIL' 2>/dev/null"
+            
+            success, _ = self.run_command(check_cmd)
             if not success:
-                self.log(f"✗ Failed to install {pkg}", "error")
-                return False
+                # Package not found, install via pip
+                self.log(f"  Installing {pkg} via pip...")
+                success, _ = self.run_command(f"sudo pip3 install --break-system-packages {pkg}")
+                if not success:
+                    self.log(f"✗ Failed to install {pkg}", "error")
+                    return False
                 
-        self.log("✓ Python packages installed", "success")
+        self.log("✓ Python packages verified/installed", "success")
         return True
         
     def create_directories(self):

@@ -4,8 +4,7 @@
 echo "📦 Installing System Packages for Vibration Monitor"
 echo "=================================================="
 echo ""
-echo "This script will help you install the required packages."
-echo "You'll need to run the sudo commands manually."
+echo "This script will automatically install all required packages."
 echo ""
 
 # Colors
@@ -14,19 +13,35 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${YELLOW}Please run these commands:${NC}"
+echo -e "${YELLOW}Installing required system packages...${NC}"
 echo ""
-echo -e "${BLUE}# Update package list${NC}"
-echo "sudo apt-get update"
-echo ""
-echo -e "${BLUE}# Install Python packages${NC}"
-echo "sudo apt-get install -y python3-numpy python3-scipy python3-pandas python3-flask python3-flask-cors python3-serial python3-dotenv"
-echo ""
-echo -e "${BLUE}# For Raspberry Pi only:${NC}"
-echo "sudo apt-get install -y python3-rpi.gpio"
-echo ""
-echo -e "${BLUE}# OR, if you prefer virtual environments:${NC}"
-echo "sudo apt-get install -y python3-venv"
+
+# Update package list
+echo -e "${BLUE}Updating package list...${NC}"
+sudo apt-get update
+
+# Install all required packages including GUI dependencies
+echo -e "${BLUE}Installing Python packages and GUI dependencies...${NC}"
+sudo apt-get install -y \
+    python3-numpy \
+    python3-scipy \
+    python3-pandas \
+    python3-flask \
+    python3-flask-cors \
+    python3-serial \
+    python3-dotenv \
+    python3-tk \
+    python3-pil \
+    python3-pil.imagetk \
+    python3-pip \
+    sqlite3
+
+# For Raspberry Pi GPIO support
+if [ -f /proc/device-tree/model ] && grep -q "Raspberry Pi" /proc/device-tree/model; then
+    echo -e "${BLUE}Detected Raspberry Pi - Installing GPIO support...${NC}"
+    sudo apt-get install -y python3-rpi.gpio
+fi
+
 echo ""
 
 # Check what's already installed

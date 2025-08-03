@@ -25,15 +25,26 @@ sudo apt install -y \
     nodejs \
     npm \
     chromium-browser \
-    sqlite3
+    sqlite3 \
+    python3-tk \
+    python3-pil \
+    python3-pil.imagetk \
+    python3-numpy \
+    python3-scipy \
+    python3-pandas \
+    python3-flask \
+    python3-flask-cors \
+    python3-serial \
+    python3-dotenv
 
-# Install Python packages globally (for system-wide access)
-echo "3. Installing Python dependencies..."
+# Install any missing Python packages via pip
+echo "3. Installing additional Python dependencies..."
 sudo pip3 install --break-system-packages \
     pyserial \
     flask \
     flask-cors \
-    numpy
+    numpy \
+    Pillow
 
 # Create application directory
 echo "4. Creating application directory..."
