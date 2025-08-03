@@ -320,39 +320,94 @@ class InstallerWindow:
                                      font=("Arial", 11, "bold"), fg=self.text_color, bg=self.bg_color)
         license_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
         
-        # License text with smaller fixed height
-        license_text = tk.Text(license_frame, height=8, width=70, 
+        # Create frame for text and scrollbar
+        text_frame = tk.Frame(license_frame, bg=self.bg_color)
+        text_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=False)
+        
+        # License text with scrollable area
+        license_text = tk.Text(text_frame, height=10, width=70, 
                               font=("Courier", 8), bg="white", fg=self.text_color,
                               wrap=tk.WORD, relief=tk.FLAT, bd=1)
-        license_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=False)
+        license_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
         
-        license_content = """COMMERCIAL LICENSE NOTICE
+        # Add scrollbar for license text
+        scrollbar = tk.Scrollbar(text_frame, command=license_text.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        license_text.config(yscrollcommand=scrollbar.set)
+        
+        license_content = """COMMERCIAL LICENSE AGREEMENT
 
 © 2025 AutomataNexus AI & AutomataControls. All rights reserved.
 
-This software is commercially licensed, not open source. By installing and using this software, you agree to the following terms:
+IMPORTANT: READ CAREFULLY BEFORE INSTALLING
 
-1. LICENSE REQUIRED: A valid commercial license is required for production use.
-   - Professional License: $500-$1,500 (up to 5 sensors)
-   - Business License: $2,500-$5,000 (up to 16 sensors per location)
-   - Enterprise License: $10,000+ (unlimited sensors)
+This is a legally binding agreement between you (either an individual or entity) and AutomataNexus AI/AutomataControls for the use of the AutomataNexus Vibration Monitor software ("Software").
 
-2. EVALUATION PERIOD: You may evaluate this software for 30 days without a license.
+1. GRANT OF LICENSE
+   Subject to payment of applicable license fees and compliance with this agreement:
+   - Professional License ($500-$1,500): Up to 5 sensors, single location, 1 year updates
+   - Business License ($2,500-$5,000): Up to 16 sensors per location, multi-site, 2 year updates
+   - Enterprise License ($10,000+): Unlimited sensors, global deployment, 3 year updates, priority support
+   
+2. EVALUATION TERMS
+   - 30-day evaluation period for testing and assessment
+   - Full functionality during evaluation
+   - Production use requires purchased license
+   - Data collected during evaluation may be retained
 
-3. RESTRICTIONS: You may NOT:
-   - Distribute or resell this software
-   - Reverse engineer or modify the code
-   - Remove copyright notices
-   - Use without a valid license after evaluation
+3. RESTRICTIONS
+   You may NOT:
+   - Copy, distribute, rent, lease, or sublicense the Software
+   - Reverse engineer, decompile, or disassemble the Software
+   - Modify, adapt, or create derivative works
+   - Remove or alter proprietary notices or labels
+   - Use the Software for competing products or services
+   - Transfer the license without written permission
 
-4. WARRANTY DISCLAIMER: This software is provided "AS IS" without warranty of any kind.
+4. INTELLECTUAL PROPERTY
+   - The Software is protected by copyright and trade secret laws
+   - AutomataNexus AI retains all rights, title, and interest
+   - This license does not grant any rights to trademarks or service marks
 
-5. INDUSTRIAL USE: Proper installation by qualified personnel is required. We are not responsible for equipment damage or safety issues.
+5. DATA COLLECTION & PRIVACY
+   - Software collects vibration metrics and equipment data locally
+   - No data is transmitted to AutomataNexus without explicit BMS configuration
+   - You retain ownership of all collected sensor data
+   - We do not access your data without written permission
 
-For licensing inquiries: DevOps@automatacontrols.com
-Full license terms: See COMMERCIAL.md
+6. WARRANTY DISCLAIMER
+   THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT. THE ENTIRE RISK OF USE REMAINS WITH YOU.
 
-By clicking "I Accept", you acknowledge that you have read and agree to these terms."""
+7. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL AUTOMATANEXUS AI BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, BUSINESS INTERRUPTION, OR DATA LOSS, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. MAXIMUM LIABILITY SHALL NOT EXCEED LICENSE FEES PAID.
+
+8. INDUSTRIAL SAFETY NOTICE
+   - This Software monitors industrial equipment vibration
+   - Proper installation by qualified personnel is REQUIRED
+   - Always follow equipment manufacturer safety procedures
+   - Software alerts do not replace human safety protocols
+   - User assumes all risks related to equipment operation
+
+9. SUPPORT & UPDATES
+   - Email support included with all licenses
+   - Software updates provided per license tier
+   - Priority support for Enterprise customers
+   - Community forum access for all users
+
+10. TERMINATION
+    - License terminates upon breach of any terms
+    - Upon termination, you must destroy all copies
+    - Sections 4, 6, 7, and 8 survive termination
+
+11. GOVERNING LAW
+    This agreement is governed by the laws of the United States and the State of Delaware, without regard to conflict of law principles.
+
+12. ENTIRE AGREEMENT
+    This constitutes the entire agreement and supersedes all prior agreements. Any modifications must be in writing and signed by both parties.
+
+Contact: DevOps@automatacontrols.com | License verification: license@automatacontrols.com
+
+BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGREE TO BE BOUND BY ALL TERMS OF THIS AGREEMENT."""
         
         license_text.insert("1.0", license_content)
         license_text.config(state=tk.DISABLED)
