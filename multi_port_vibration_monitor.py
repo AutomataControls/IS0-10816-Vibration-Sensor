@@ -42,10 +42,61 @@ from flask_cors import CORS
 import os
 import sqlite3
 import json
+from functools import wraps
+from datetime import datetime, timedelta
+import jwt
+from dotenv import load_dotenv
+import hashlib
+
+# Load environment variables
+load_dotenv()
 
 # Flask app
 app = Flask(__name__)
 CORS(app)
+
+# Authentication configuration
+AUTH_ENABLED = os.getenv('API_ENABLE_AUTH', 'false').lower() == 'true'
+SECRET_KEY = os.getenv('API_SECRET_KEY', 'default-secret-key-change-me')
+PASSWORD_HASH = os.getenv('API_PASSWORD_HASH', '')
+TOKEN_EXPIRY_HOURS = int(os.getenv('API_TOKEN_EXPIRY_HOURS', '24'))
+
+# Store active tokens (in production, use Redis or database)
+active_tokens = set()
+
+def require_auth(f):
+    """Decorator to require authentication for API endpoints"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not AUTH_ENABLED:
+            return f(*args, **kwargs)
+            
+        token = None
+        auth_header = request.headers.get('Authorization')
+        
+        if auth_header:
+            try:
+                token = auth_header.split(' ')[1]  # Bearer <token>
+            except IndexError:
+                return jsonify({'error': 'Invalid token format'}), 401
+                
+        if not token:
+            return jsonify({'error': 'Authentication token required'}), 401
+            
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+            
+            # Check if token is in active set
+            if token not in active_tokens:
+                return jsonify({'error': 'Token has been invalidated'}), 401
+                
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+            
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Global monitor instance
 monitor_instance = None
@@ -701,6 +752,66 @@ class MultiPortVibrationMonitor:
             print(f"Error loading configuration: {e}")
 
 # Flask API Routes
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Authenticate and receive JWT token"""
+    if not AUTH_ENABLED:
+        return jsonify({'auth_required': False, 'message': 'Authentication disabled'}), 200
+        
+    data = request.get_json()
+    password = data.get('password', '')
+    
+    if not password:
+        return jsonify({'error': 'Password required'}), 400
+    
+    # Verify password
+    try:
+        import bcrypt
+        password_valid = bcrypt.checkpw(password.encode('utf-8'), PASSWORD_HASH.encode('utf-8'))
+    except:
+        # Fallback to SHA256 if bcrypt not available
+        password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        password_valid = password_hash == PASSWORD_HASH
+    
+    if not password_valid:
+        return jsonify({'error': 'Invalid password'}), 401
+    
+    # Generate JWT token
+    expiry = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
+    token = jwt.encode({
+        'exp': expiry,
+        'iat': datetime.utcnow(),
+        'sub': 'api-user'
+    }, SECRET_KEY, algorithm='HS256')
+    
+    # Add to active tokens
+    active_tokens.add(token)
+    
+    return jsonify({
+        'token': token,
+        'expires_at': expiry.isoformat(),
+        'expires_in': TOKEN_EXPIRY_HOURS * 3600
+    }), 200
+
+@app.route('/api/auth/logout', methods=['POST'])
+@require_auth
+def logout():
+    """Invalidate the current token"""
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        token = auth_header.split(' ')[1]
+        active_tokens.discard(token)
+    
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+@app.route('/api/auth/status', methods=['GET'])
+def auth_status():
+    """Check if authentication is enabled"""
+    return jsonify({
+        'auth_enabled': AUTH_ENABLED,
+        'auth_configured': bool(PASSWORD_HASH)
+    }), 200
+
 @app.route('/monitoring-app.html')
 def serve_monitoring_app():
     """Serve the monitoring app HTML file"""
@@ -1185,6 +1296,7 @@ def serve_web_interface():
     """
 
 @app.route('/api/status')
+@require_auth
 def get_status():
     """Get system status"""
     if monitor_instance:
@@ -1240,6 +1352,7 @@ def get_status():
     })
 
 @app.route('/api/configure', methods=['POST'])
+@require_auth
 def configure_equipment():
     """Configure equipment for each sensor"""
     global monitor_instance
@@ -1281,11 +1394,13 @@ def configure_equipment():
     return jsonify({'success': True, 'configured': monitor_instance.configured})
 
 @app.route('/api/equipment-types')
+@require_auth
 def get_equipment_types():
     """Get available equipment types"""
     return jsonify(EQUIPMENT_TYPES)
 
 @app.route('/api/monitoring/start', methods=['POST'])
+@require_auth
 def start_monitoring():
     """Start monitoring if configured"""
     global monitor_instance
@@ -1322,6 +1437,7 @@ def stop_monitoring():
     return jsonify({'success': True, 'message': 'Monitoring stopped'})
 
 @app.route('/api/readings')
+@require_auth
 def get_readings():
     """Get latest readings from all sensors"""
     if monitor_instance and monitor_instance.latest_readings:
@@ -1360,6 +1476,7 @@ def get_readings():
     return jsonify({})
 
 @app.route('/api/metrics/history')
+@require_auth
 def get_metrics_history():
     """Get historical metrics from database
     Query params:
@@ -1459,6 +1576,7 @@ def get_metrics_history():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/metrics/summary')
+@require_auth
 def get_metrics_summary():
     """Get summary statistics for all sensors
     Query params:
@@ -1546,6 +1664,7 @@ def get_metrics_summary():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/metrics/alerts')
+@require_auth
 def get_alerts():
     """Get recent alerts (Zone C and D events)
     Query params:
@@ -1598,6 +1717,7 @@ def get_alerts():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/calibration/<port>', methods=['GET'])
+@require_auth
 def get_calibration(port):
     """Get current calibration values for a sensor"""
     global monitor_instance
@@ -1622,6 +1742,7 @@ def get_calibration(port):
     })
 
 @app.route('/api/calibration/<port>', methods=['POST'])
+@require_auth
 def set_calibration(port):
     """Update calibration values for a sensor"""
     global monitor_instance
@@ -1654,6 +1775,7 @@ def set_calibration(port):
     })
 
 @app.route('/api/calibration/<port>/zero', methods=['POST'])
+@require_auth
 def zero_calibration(port):
     """Set current readings as zero baseline"""
     global monitor_instance

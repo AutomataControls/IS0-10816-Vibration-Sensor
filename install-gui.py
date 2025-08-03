@@ -415,6 +415,7 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             ("Installing Python packages...", self.install_python_packages),
             ("Creating directories...", self.create_directories),
             ("Cloning repository...", self.clone_repository),
+            ("Setting up API security...", self.setup_api_security),
             ("Setting up service...", self.setup_service),
             ("Configuring permissions...", self.configure_permissions),
             ("Creating shortcuts...", self.create_shortcuts),
@@ -535,7 +536,7 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         
     def install_python_packages(self):
         self.log("Installing Python packages...")
-        packages = ["pyserial", "flask", "flask-cors", "numpy", "Pillow"]
+        packages = ["pyserial", "flask", "flask-cors", "numpy", "Pillow", "bcrypt", "PyJWT", "python-dotenv"]
         
         # Check if packages are already installed via apt, only install missing ones via pip
         for pkg in packages:
@@ -614,6 +615,160 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         
         self.log("✓ Repository setup complete", "success")
         return True
+    
+    def setup_api_security(self):
+        """Setup API security with password"""
+        self.log("Setting up API security...")
+        
+        # Create password dialog
+        password_dialog = tk.Toplevel(self.root)
+        password_dialog.title("API Security Setup")
+        password_dialog.geometry("400x350")
+        password_dialog.transient(self.root)
+        password_dialog.grab_set()
+        
+        # Center the dialog
+        password_dialog.update_idletasks()
+        x = (password_dialog.winfo_screenwidth() // 2) - (200)
+        y = (password_dialog.winfo_screenheight() // 2) - (175)
+        password_dialog.geometry(f"400x350+{x}+{y}")
+        
+        # Variables to store password
+        password_result = {'password': None, 'confirmed': False}
+        
+        # Create dialog content
+        frame = tk.Frame(password_dialog, bg=self.bg_color, padx=20, pady=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        tk.Label(frame, text="Set API Access Password", 
+                font=("Arial", 14, "bold"), bg=self.bg_color).pack(pady=(0, 10))
+        
+        tk.Label(frame, text="Password Requirements:", 
+                font=("Arial", 10), bg=self.bg_color).pack(anchor=tk.W)
+        
+        requirements = [
+            "• At least 8 characters long",
+            "• Contains at least one number",
+            "• Contains at least one special character (!@#$%^&*)",
+            "• Contains both upper and lowercase letters"
+        ]
+        
+        for req in requirements:
+            tk.Label(frame, text=req, font=("Arial", 9), 
+                    bg=self.bg_color, fg="#666").pack(anchor=tk.W, padx=(10, 0))
+        
+        tk.Label(frame, text="", bg=self.bg_color).pack()  # Spacer
+        
+        # Password entry
+        tk.Label(frame, text="Password:", bg=self.bg_color).pack(anchor=tk.W)
+        password_entry = tk.Entry(frame, show="*", width=30)
+        password_entry.pack(fill=tk.X, pady=(5, 10))
+        
+        # Confirm password entry
+        tk.Label(frame, text="Confirm Password:", bg=self.bg_color).pack(anchor=tk.W)
+        confirm_entry = tk.Entry(frame, show="*", width=30)
+        confirm_entry.pack(fill=tk.X, pady=(5, 10))
+        
+        # Status label
+        status_label = tk.Label(frame, text="", font=("Arial", 9), 
+                               bg=self.bg_color, fg="red")
+        status_label.pack(pady=5)
+        
+        def validate_password():
+            password = password_entry.get()
+            confirm = confirm_entry.get()
+            
+            # Check if passwords match
+            if password != confirm:
+                status_label.config(text="Passwords do not match", fg="red")
+                return
+            
+            # Validate password requirements
+            if len(password) < 8:
+                status_label.config(text="Password must be at least 8 characters", fg="red")
+                return
+            
+            if not any(c.isdigit() for c in password):
+                status_label.config(text="Password must contain at least one number", fg="red")
+                return
+            
+            if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+                status_label.config(text="Password must contain at least one special character", fg="red")
+                return
+            
+            if not (any(c.isupper() for c in password) and any(c.islower() for c in password)):
+                status_label.config(text="Password must contain both upper and lowercase letters", fg="red")
+                return
+            
+            # Password is valid
+            password_result['password'] = password
+            password_result['confirmed'] = True
+            password_dialog.destroy()
+        
+        # Buttons
+        button_frame = tk.Frame(frame, bg=self.bg_color)
+        button_frame.pack(pady=(10, 0))
+        
+        tk.Button(button_frame, text="Cancel", command=password_dialog.destroy,
+                 padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_frame, text="Set Password", command=validate_password,
+                 padx=20, pady=5, bg=self.primary_color, fg="white").pack(side=tk.LEFT, padx=5)
+        
+        # Wait for dialog to close
+        self.root.wait_window(password_dialog)
+        
+        if not password_result['confirmed']:
+            self.log("✗ API security setup cancelled", "error")
+            return False
+        
+        # Generate secure secret key
+        import secrets
+        import string
+        
+        secret_key = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(32))
+        
+        # Create .env file
+        env_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/.env"
+        env_content = f"""# AutomataNexus Vibration Monitor API Security Configuration
+# Generated during installation - DO NOT SHARE THIS FILE
+
+# API Secret Key for JWT tokens
+API_SECRET_KEY={secret_key}
+
+# API Access Password (hashed)
+API_PASSWORD_HASH={self.hash_password(password_result['password'])}
+
+# API Configuration
+API_TOKEN_EXPIRY_HOURS=24
+API_ENABLE_AUTH=true
+"""
+        
+        try:
+            with open("/tmp/.env", "w") as f:
+                f.write(env_content)
+            self.run_command(f"sudo mv /tmp/.env {env_path}")
+            self.run_command(f"sudo chmod 600 {env_path}")
+            self.run_command(f"sudo chown {os.environ.get('USER', 'pi')}:{os.environ.get('USER', 'pi')} {env_path}")
+            
+            self.log("✓ API security configured", "success")
+            self.log(f"  Password set successfully", "success")
+            self.log(f"  Security configuration saved to .env", "success")
+            return True
+            
+        except Exception as e:
+            self.log(f"✗ Failed to setup API security: {e}", "error")
+            return False
+    
+    def hash_password(self, password):
+        """Generate bcrypt hash of password"""
+        try:
+            import bcrypt
+            return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        except ImportError:
+            # Fallback to simple hash if bcrypt not available
+            import hashlib
+            return hashlib.sha256(password.encode('utf-8')).hexdigest()
             
     def setup_service(self):
         self.log("Setting up systemd service...")

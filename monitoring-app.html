@@ -170,9 +170,68 @@
             border-top-color: #333;
             z-index: 1000;
         }
+        .login-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-form {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            width: 90%;
+            max-width: 400px;
+        }
+        .login-form h2 {
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+        .login-form input {
+            width: 100%;
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .login-form .error {
+            color: #dc3545;
+            margin-bottom: 1rem;
+            font-size: 14px;
+        }
+        .login-form button {
+            width: 100%;
+            padding: 0.75rem;
+            background: #f97316;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .login-form button:hover {
+            background: #ea580c;
+        }
     </style>
 </head>
 <body>
+    <!-- Login Modal -->
+    <div id="login-modal" class="login-modal">
+        <div class="login-form">
+            <h2>API Authentication Required</h2>
+            <div id="login-error" class="error"></div>
+            <input type="password" id="api-password" placeholder="Enter API password" onkeypress="if(event.key==='Enter')login()">
+            <button onclick="login()">Login</button>
+        </div>
+    </div>
     <div class="header">
         <div class="logo">
             <img src="icon.png" alt="AutomataNexus" style="width: 40px; height: 40px; border-radius: 50%;" onerror="this.style.display='none'; document.getElementById('logo-fallback').style.display='flex';">
@@ -250,6 +309,98 @@
             datasets: []
         };
         const MAX_DATA_POINTS = 30;
+        
+        // Authentication state
+        let authToken = localStorage.getItem('vibration_api_token');
+        let authRequired = false;
+        
+        // Check authentication status on load
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/status`);
+                const data = await response.json();
+                authRequired = data.auth_enabled;
+                
+                if (authRequired && !authToken) {
+                    showLoginModal();
+                } else if (authToken) {
+                    // Verify token is still valid
+                    const testResponse = await authenticatedFetch(`${API_BASE}/status`);
+                    if (testResponse.status === 401) {
+                        authToken = null;
+                        localStorage.removeItem('vibration_api_token');
+                        showLoginModal();
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+            }
+        }
+        
+        function showLoginModal() {
+            document.getElementById('login-modal').style.display = 'flex';
+            document.getElementById('api-password').focus();
+        }
+        
+        function hideLoginModal() {
+            document.getElementById('login-modal').style.display = 'none';
+            document.getElementById('login-error').textContent = '';
+            document.getElementById('api-password').value = '';
+        }
+        
+        async function login() {
+            const password = document.getElementById('api-password').value;
+            const errorDiv = document.getElementById('login-error');
+            
+            if (!password) {
+                errorDiv.textContent = 'Please enter a password';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    localStorage.setItem('vibration_api_token', authToken);
+                    hideLoginModal();
+                    // Reload data with authentication
+                    startAutoUpdate();
+                } else {
+                    errorDiv.textContent = data.error || 'Login failed';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Connection error: ' + error.message;
+            }
+        }
+        
+        // Wrapper for authenticated fetch requests
+        async function authenticatedFetch(url, options = {}) {
+            if (authRequired && authToken) {
+                options.headers = {
+                    ...options.headers,
+                    'Authorization': `Bearer ${authToken}`
+                };
+            }
+            
+            const response = await fetch(url, options);
+            
+            // If unauthorized, show login
+            if (response.status === 401) {
+                authToken = null;
+                localStorage.removeItem('vibration_api_token');
+                showLoginModal();
+                throw new Error('Authentication required');
+            }
+            
+            return response;
+        }
 
         function showTab(tabName, btn) {
             // Hide all sections
@@ -273,7 +424,7 @@
 
         async function loadSensorData() {
             try {
-                const response = await fetch(`${API_BASE}/readings`);
+                const response = await authenticatedFetch(`${API_BASE}/readings`);
                 const data = await response.json();
                 
                 document.getElementById('connection-status').className = 'status online';
@@ -323,7 +474,7 @@
 
         async function loadConfig() {
             try {
-                const response = await fetch(`${API_BASE}/status`);
+                const response = await authenticatedFetch(`${API_BASE}/status`);
                 const status = await response.json();
                 
                 const container = document.getElementById('config-list');
@@ -376,7 +527,7 @@
 
         async function scanPorts() {
             try {
-                const response = await fetch(`${API_BASE}/status`);
+                const response = await authenticatedFetch(`${API_BASE}/status`);
                 const status = await response.json();
                 
                 if (!status.sensors || status.sensors.length === 0) {
@@ -455,7 +606,7 @@
 
         async function saveAllConfigurations() {
             try {
-                const response = await fetch(`${API_BASE}/status`);
+                const response = await authenticatedFetch(`${API_BASE}/status`);
                 const status = await response.json();
                 
                 if (!status.sensors || status.sensors.length === 0) {
@@ -492,7 +643,7 @@
                         mounting: 'rigid'
                     };
                     
-                    const configResponse = await fetch(`${API_BASE}/configure`, {
+                    const configResponse = await authenticatedFetch(`${API_BASE}/configure`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(config)
@@ -540,7 +691,7 @@
             };
             
             try {
-                const response = await fetch(`${API_BASE}/configure`, {
+                const response = await authenticatedFetch(`${API_BASE}/configure`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
@@ -560,7 +711,7 @@
 
         async function startMonitoring() {
             try {
-                const response = await fetch(`${API_BASE}/monitoring/start`, { method: 'POST' });
+                const response = await authenticatedFetch(`${API_BASE}/monitoring/start`, { method: 'POST' });
                 const result = await response.json();
                 document.getElementById('control-status').innerHTML = '<p style="color: #28a745;">Monitoring started successfully!</p>';
             } catch (error) {
@@ -570,7 +721,7 @@
 
         async function stopMonitoring() {
             try {
-                const response = await fetch(`${API_BASE}/monitoring/stop`, { method: 'POST' });
+                const response = await authenticatedFetch(`${API_BASE}/monitoring/stop`, { method: 'POST' });
                 const result = await response.json();
                 document.getElementById('control-status').innerHTML = '<p style="color: #ffc107;">Monitoring stopped</p>';
             } catch (error) {
@@ -682,6 +833,8 @@
         // Initialize chart when page loads
         window.addEventListener('DOMContentLoaded', () => {
             initTrendChart();
+            // Check auth status first
+            checkAuthStatus();
         });
 
         // Start loading data
@@ -690,7 +843,7 @@
         // Calibration functions
         async function loadCalibration() {
             try {
-                const response = await fetch(`${API_BASE}/status`);
+                const response = await authenticatedFetch(`${API_BASE}/status`);
                 const status = await response.json();
                 
                 const container = document.getElementById('calibration-list');
@@ -759,7 +912,7 @@
         
         async function loadCalibrationValues(port) {
             try {
-                const response = await fetch(`${API_BASE}/calibration/${port}`);
+                const response = await authenticatedFetch(`${API_BASE}/calibration/${port}`);
                 const cal = await response.json();
                 
                 document.getElementById(`vel-offset-${port}`).value = cal.velocity_offset || 0;
@@ -775,7 +928,7 @@
             if (!confirm(`Set current reading as zero point for this sensor?`)) return;
             
             try {
-                const response = await fetch(`${API_BASE}/calibration/${port}/zero`, {
+                const response = await authenticatedFetch(`${API_BASE}/calibration/${port}/zero`, {
                     method: 'POST'
                 });
                 
@@ -800,7 +953,7 @@
                     accel_scale: parseFloat(document.getElementById(`acc-scale-${port}`).value)
                 };
                 
-                const response = await fetch(`${API_BASE}/calibration/${port}`, {
+                const response = await authenticatedFetch(`${API_BASE}/calibration/${port}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
@@ -844,7 +997,7 @@
             await originalLoadSensorData();
             // Get the latest data and update calibration if that tab is active
             try {
-                const response = await fetch(`${API_BASE}/readings`);
+                const response = await authenticatedFetch(`${API_BASE}/readings`);
                 const data = await response.json();
                 updateCalibrationLiveValues(data);
             } catch (error) {
