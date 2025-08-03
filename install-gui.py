@@ -315,20 +315,20 @@ class InstallerWindow:
                                justify="center")
         welcome_text.pack(pady=(0, 10))
         
-        # License frame - don't expand, use fixed height
+        # License frame - allow it to expand to use available space
         license_frame = tk.LabelFrame(welcome_frame, text="Commercial License Agreement", 
                                      font=("Arial", 11, "bold"), fg=self.text_color, bg=self.bg_color)
-        license_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
+        license_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
         # Create frame for text and scrollbar
         text_frame = tk.Frame(license_frame, bg=self.bg_color)
-        text_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=False)
+        text_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         
         # License text with scrollable area
-        license_text = tk.Text(text_frame, height=10, width=70, 
-                              font=("Courier", 8), bg="white", fg=self.text_color,
+        license_text = tk.Text(text_frame, height=10, width=80, 
+                              font=("Arial", 9), bg="white", fg=self.text_color,
                               wrap=tk.WORD, relief=tk.FLAT, bd=1)
-        license_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=False)
+        license_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
         # Add scrollbar for license text
         scrollbar = tk.Scrollbar(text_frame, command=license_text.yview)
