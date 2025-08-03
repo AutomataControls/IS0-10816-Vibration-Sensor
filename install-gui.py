@@ -531,7 +531,8 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         # Core packages that must be installed
         core_packages = [
             "python3", "python3-pip", "python3-venv",
-            "git", "curl", "sqlite3"
+            "git", "curl", "sqlite3",
+            "build-essential", "python3-dev", "libffi-dev"  # Required for bcrypt compilation
         ]
         
         # Python packages
@@ -539,7 +540,7 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
             "python3-tk", "python3-pil", "python3-pil.imagetk",
             "python3-numpy", "python3-scipy", "python3-pandas",
             "python3-flask", "python3-flask-cors", "python3-serial",
-            "python3-dotenv"
+            "python3-dotenv", "python3-bcrypt"  # Try to get bcrypt from apt
         ]
         
         # Optional packages (may have conflicts)
@@ -625,10 +626,26 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
             if not success:
                 # Package not found, install via pip
                 self.log(f"  Installing {pkg} via pip...")
-                success, _ = self.run_command(f"sudo pip3 install --break-system-packages {pkg}")
+                
+                # Special handling for bcrypt which needs compilation
+                if pkg == "bcrypt":
+                    # Try to install with --prefer-binary to avoid compilation if possible
+                    success, _ = self.run_command(f"sudo pip3 install --break-system-packages --prefer-binary {pkg}")
+                    if not success:
+                        # If that fails, try cryptography as a dependency first
+                        self.log(f"  Installing cryptography first...")
+                        self.run_command("sudo pip3 install --break-system-packages --prefer-binary cryptography")
+                        success, _ = self.run_command(f"sudo pip3 install --break-system-packages --prefer-binary {pkg}")
+                else:
+                    success, _ = self.run_command(f"sudo pip3 install --break-system-packages {pkg}")
+                    
                 if not success:
-                    self.log(f"✗ Failed to install {pkg}", "error")
-                    return False
+                    # Don't fail on bcrypt, we have SHA256 fallback
+                    if pkg == "bcrypt":
+                        self.log(f"⚠ Warning: {pkg} installation failed, will use SHA256 fallback", "warning")
+                    else:
+                        self.log(f"✗ Failed to install {pkg}", "error")
+                        return False
                 
         self.log("✓ Python packages verified/installed", "success")
         return True
