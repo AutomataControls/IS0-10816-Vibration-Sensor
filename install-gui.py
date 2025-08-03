@@ -710,10 +710,10 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame.pack(pady=(10, 0))
         
         tk.Button(button_frame, text="Cancel", command=password_dialog.destroy,
-                 padx=20, pady=5).pack(side=tk.LEFT, padx=5)
+                 padx=20, pady=10).pack(side=tk.LEFT, padx=5)
         
         tk.Button(button_frame, text="Set Password", command=validate_password,
-                 padx=20, pady=5, bg=self.primary_color, fg="white").pack(side=tk.LEFT, padx=5)
+                 padx=20, pady=10, bg=self.primary_color, fg="white").pack(side=tk.LEFT, padx=5)
         
         # Wait for dialog to close
         self.root.wait_window(password_dialog)
