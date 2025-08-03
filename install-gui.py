@@ -261,11 +261,11 @@ class InstallerWindow:
             
         # Welcome frame with less padding
         welcome_frame = tk.Frame(self.root, bg=self.bg_color)
-        welcome_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
+        welcome_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        # Logo and title
+        # Logo and title - reduce vertical spacing
         header_frame = tk.Frame(welcome_frame, bg=self.bg_color)
-        header_frame.pack(pady=(0, 20))
+        header_frame.pack(pady=(0, 10))
         
         # Try to load logo
         logo_loaded = False
@@ -282,11 +282,11 @@ class InstallerWindow:
                     if os.path.exists(logo_path):
                         try:
                             img = Image.open(logo_path)
-                            # Keep aspect ratio - logo might not be square, make it larger
-                            img.thumbnail((200, 200), Image.LANCZOS)
+                            # Keep aspect ratio - moderate size
+                            img.thumbnail((120, 120), Image.LANCZOS)
                             self.welcome_logo = ImageTk.PhotoImage(img)
                             logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
-                            logo_label.pack(pady=2)
+                            logo_label.pack(pady=0)
                             logo_loaded = True
                             print(f"Logo loaded from: {logo_path}")
                             break
@@ -303,28 +303,28 @@ class InstallerWindow:
             canvas.create_text(40, 40, text="AN", font=("Arial", 24, "bold"), fill="white")
         
         tk.Label(header_frame, text="AutomataNexus Vibration Monitor", 
-                font=("Arial", 20, "bold"), fg=self.text_color, bg=self.bg_color).pack(pady=(5, 0))
+                font=("Arial", 18, "bold"), fg=self.text_color, bg=self.bg_color).pack(pady=(2, 0))
         tk.Label(header_frame, text="Enterprise-Grade ISO 10816-3 Compliant System", 
-                font=("Arial", 12), fg="#6b7280", bg=self.bg_color).pack()
+                font=("Arial", 11), fg="#6b7280", bg=self.bg_color).pack()
         
         # Welcome message
         welcome_text = tk.Label(welcome_frame, 
                                text="Welcome to the AutomataNexus Vibration Monitor installer.\n" +
                                     "This wizard will guide you through the installation process.",
-                               font=("Arial", 11), fg=self.text_color, bg=self.bg_color,
+                               font=("Arial", 10), fg=self.text_color, bg=self.bg_color,
                                justify="center")
-        welcome_text.pack(pady=(0, 20))
+        welcome_text.pack(pady=(0, 10))
         
         # License frame - don't expand, use fixed height
         license_frame = tk.LabelFrame(welcome_frame, text="Commercial License Agreement", 
-                                     font=("Arial", 12, "bold"), fg=self.text_color, bg=self.bg_color)
-        license_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 10))
+                                     font=("Arial", 11, "bold"), fg=self.text_color, bg=self.bg_color)
+        license_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 5))
         
-        # License text with fixed height
-        license_text = tk.Text(license_frame, height=10, width=70, 
-                              font=("Courier", 9), bg="white", fg=self.text_color,
+        # License text with smaller fixed height
+        license_text = tk.Text(license_frame, height=8, width=70, 
+                              font=("Courier", 8), bg="white", fg=self.text_color,
                               wrap=tk.WORD, relief=tk.FLAT, bd=1)
-        license_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=False)
+        license_text.pack(padx=10, pady=5, fill=tk.BOTH, expand=False)
         
         license_content = """COMMERCIAL LICENSE NOTICE
 
@@ -366,17 +366,17 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
                                      command=self.check_accept_button)
         accept_check.pack()
         
-        # Buttons
+        # Buttons - ensure they're visible
         button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
-        button_frame.pack(fill=tk.X, pady=(20, 0))
+        button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Create buttons with more vertical padding
+        # Create buttons with moderate padding
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
                                               font=("Arial", 12), bg="#e5e7eb", 
                                               fg=self.text_color, 
                                               relief=tk.FLAT, command=self.root.quit,
-                                              padx=40, pady=25)
-        self.cancel_welcome_button.pack(side=tk.LEFT, padx=20, ipady=5)
+                                              padx=35, pady=20)
+        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
                                       font=("Arial", 12, "bold"), 
@@ -384,8 +384,8 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
                                       relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license,
-                                      padx=40, pady=25)
-        self.accept_button.pack(side=tk.RIGHT, padx=20, ipady=5)
+                                      padx=35, pady=20)
+        self.accept_button.pack(side=tk.RIGHT, padx=10)
         
     def check_accept_button(self):
         """Enable/disable accept button based on checkbox"""
