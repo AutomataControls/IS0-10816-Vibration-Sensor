@@ -38,7 +38,7 @@ class UninstallerWindow:
     def __init__(self, root):
         self.root = root
         self.root.title("AutomataNexus Vibration Monitor - Uninstaller")
-        self.root.geometry("700x600")
+        self.root.geometry("650x550")
         self.root.resizable(False, False)
         
         # Colors matching our theme
@@ -127,10 +127,10 @@ class UninstallerWindow:
         title_frame.pack(side="left", padx=10, pady=20)
         
         tk.Label(title_frame, text="Vibration Monitor Uninstaller", 
-                font=("Arial", 20, "bold"), 
+                font=("Arial", 18, "bold"), 
                 fg=self.text_color, bg=self.card_bg).pack(anchor="w")
         tk.Label(title_frame, text="Remove all components safely", 
-                font=("Arial", 12), 
+                font=("Arial", 10), 
                 fg="#6b7280", bg=self.card_bg).pack(anchor="w")
         
         # Warning card
@@ -141,25 +141,40 @@ class UninstallerWindow:
         warning_inner.pack(padx=15, pady=12)
         
         tk.Label(warning_inner, text="⚠️  Warning", 
-                font=("Arial", 14, "bold"), 
+                font=("Arial", 12, "bold"), 
                 fg="#92400e", bg="#fef3c7").pack(anchor="w")
         tk.Label(warning_inner, 
                 text="This will permanently remove the AutomataNexus Vibration Monitor.\nAll data and configurations will be deleted.",
-                font=("Arial", 11), 
+                font=("Arial", 9), 
                 fg="#78350f", bg="#fef3c7", 
                 justify="left").pack(anchor="w", pady=(5, 0))
         
-        # Components selection
+        # Components selection with scrollbar
         components_frame = tk.Frame(self.root, bg=self.card_bg, relief="flat", borderwidth=1)
         components_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
         tk.Label(components_frame, text="Components to Remove", 
-                font=("Arial", 14, "bold"), 
-                fg=self.text_color, bg=self.card_bg).pack(anchor="w", padx=15, pady=(15, 10))
+                font=("Arial", 12, "bold"), 
+                fg=self.text_color, bg=self.card_bg).pack(anchor="w", padx=15, pady=(10, 5))
         
-        # Checkboxes for components
-        check_frame = tk.Frame(components_frame, bg=self.card_bg)
-        check_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        # Create scrollable frame for checkboxes
+        canvas = tk.Canvas(components_frame, bg=self.card_bg, highlightthickness=0)
+        scrollbar = tk.Scrollbar(components_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg=self.card_bg)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=(15, 0))
+        scrollbar.pack(side="right", fill="y", padx=(0, 5))
+        
+        # Checkboxes for components in scrollable frame
+        check_frame = scrollable_frame
         
         components = [
             (self.remove_service, "System Service", "Stop and remove the vibration monitor service"),
@@ -176,14 +191,14 @@ class UninstallerWindow:
             comp_frame.pack(fill="x", pady=5)
             
             cb = tk.Checkbutton(comp_frame, text=title, variable=var,
-                               font=("Arial", 11, "bold"),
+                               font=("Arial", 10, "bold"),
                                fg=self.text_color, bg=self.card_bg,
                                activebackground=self.card_bg,
                                selectcolor=self.card_bg)
             cb.pack(anchor="w")
             
             tk.Label(comp_frame, text=f"  {desc}",
-                    font=("Arial", 9),
+                    font=("Arial", 8),
                     fg="#6b7280", bg=self.card_bg).pack(anchor="w", padx=(25, 0))
         
         # Progress frame (initially hidden)

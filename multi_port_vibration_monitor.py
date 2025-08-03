@@ -2091,12 +2091,18 @@ def get_bms_config(port):
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
     
+    # Debug logging
+    print(f"BMS Config GET - Raw port: '{port}'")
+    
     # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
     if not port.startswith('/dev/'):
         if port.startswith('/'):
             port = f'/dev{port}'  # '/ttyUSB0' -> '/dev/ttyUSB0'
         else:
             port = f'/dev/{port}'  # 'ttyUSB0' -> '/dev/ttyUSB0'
+    
+    print(f"BMS Config GET - Normalized port: '{port}'")
+    print(f"BMS Config GET - Available configs: {list(monitor_instance.equipment_configs.keys())}")
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
@@ -2125,12 +2131,18 @@ def set_bms_config(port):
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
     
+    # Debug logging
+    print(f"BMS Config POST - Raw port: '{port}'")
+    
     # Handle both formats: 'ttyUSB0' or '/dev/ttyUSB0'
     if not port.startswith('/dev/'):
         if port.startswith('/'):
             port = f'/dev{port}'  # '/ttyUSB0' -> '/dev/ttyUSB0'
         else:
             port = f'/dev/{port}'  # 'ttyUSB0' -> '/dev/ttyUSB0'
+    
+    print(f"BMS Config POST - Normalized port: '{port}'")
+    print(f"BMS Config POST - Available configs: {list(monitor_instance.equipment_configs.keys())}")
         
     if port not in monitor_instance.equipment_configs:
         return jsonify({'error': f'Sensor {port} not configured'}), 404
