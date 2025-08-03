@@ -150,12 +150,40 @@ fi
 # Remove application files if selected
 if [[ "$REMOVE_FILES" == "y" ]]; then
     print_step "Removing application files..."
+    removed=0
+    
+    # Check multiple possible locations
     if [ -d "/opt/automatanexus-vibration-monitor" ]; then
         sudo rm -rf /opt/automatanexus-vibration-monitor
-        print_success "Application files removed"
-    else
-        print_warning "Application directory not found"
+        ((removed++))
     fi
+    
+    if [ -d "/opt/automatanexus/IS0-10816-Vibration-Sensor" ]; then
+        sudo rm -rf /opt/automatanexus/IS0-10816-Vibration-Sensor
+        ((removed++))
+    fi
+    
+    # Check if we're in the installation directory
+    if [[ "$PWD" == *"IS0-10816-Vibration-Sensor"* ]]; then
+        print_warning "Currently in installation directory - cannot remove"
+        print_step "Cleaning up data files instead..."
+        # Remove all CSV files
+        rm -f *.csv 2>/dev/null
+        # Remove cache and compiled files
+        rm -rf __pycache__ 2>/dev/null
+        # Remove config files
+        rm -f equipment_config.json sensor_config.json 2>/dev/null
+        # Remove service files
+        rm -f vibration-monitor.service 2>/dev/null
+        # Remove desktop files
+        rm -f vibration-monitor.desktop 2>/dev/null
+        print_success "Cleaned up data and config files"
+    elif [ $removed -eq 0 ]; then
+        print_warning "No installation directories found"
+    else
+        print_success "Application files removed"
+    fi
+    
     show_progress
     echo
 fi
@@ -163,7 +191,7 @@ fi
 # Remove configuration if selected
 if [[ "$REMOVE_CONFIG" == "y" ]]; then
     print_step "Removing configuration files..."
-    local removed=0
+    removed=0
     
     if [ -f ~/.vibration_monitor_config.json ]; then
         rm -f ~/.vibration_monitor_config.json
@@ -182,7 +210,7 @@ fi
 # Remove database if selected
 if [[ "$REMOVE_DATABASE" == "y" ]]; then
     print_step "Removing database files..."
-    local removed=0
+    removed=0
     
     if [ -f ~/vibration_monitor.db ]; then
         rm -f ~/vibration_monitor.db
@@ -191,6 +219,17 @@ if [[ "$REMOVE_DATABASE" == "y" ]]; then
     
     if [ -f /opt/automatanexus-vibration-monitor/vibration_monitor.db ]; then
         sudo rm -f /opt/automatanexus-vibration-monitor/vibration_monitor.db
+        ((removed++))
+    fi
+    
+    if [ -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_monitor.db ]; then
+        sudo rm -f /opt/automatanexus/IS0-10816-Vibration-Sensor/vibration_monitor.db
+        ((removed++))
+    fi
+    
+    # Check current directory
+    if [ -f vibration_monitor.db ]; then
+        rm -f vibration_monitor.db
         ((removed++))
     fi
     
@@ -235,7 +274,7 @@ fi
 # Remove desktop shortcuts if selected
 if [[ "$REMOVE_DESKTOP" == "y" ]]; then
     print_step "Removing desktop shortcuts..."
-    local removed=0
+    removed=0
     
     if [ -f ~/Desktop/vibration-monitor.desktop ]; then
         rm -f ~/Desktop/vibration-monitor.desktop
@@ -259,7 +298,7 @@ fi
 # Remove log files if selected
 if [[ "$REMOVE_LOGS" == "y" ]]; then
     print_step "Removing log files..."
-    local removed=0
+    removed=0
     
     if [ -d /var/log/vibration-monitor ]; then
         sudo rm -rf /var/log/vibration-monitor
