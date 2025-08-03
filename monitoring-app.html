@@ -433,6 +433,14 @@
                     body: JSON.stringify({ password })
                 });
                 
+                // Check if response is JSON
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error('Login endpoint returned non-JSON response:', await response.text());
+                    errorDiv.textContent = 'Server error: Invalid response format';
+                    return;
+                }
+                
                 const data = await response.json();
                 
                 if (response.ok) {

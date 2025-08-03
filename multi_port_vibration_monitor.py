@@ -37,7 +37,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 import os
 import sqlite3
@@ -893,9 +893,14 @@ class MultiPortVibrationMonitor:
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     """Authenticate and receive JWT token"""
+    # Ensure we return JSON even for errors
     try:
         if not AUTH_ENABLED:
             return jsonify({'auth_required': False, 'message': 'Authentication disabled'}), 200
+            
+        # Check content type
+        if request.content_type and 'application/json' not in request.content_type:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
             
         data = request.get_json(force=True)
         if not data:
@@ -918,7 +923,9 @@ def login():
         password_valid = password_hash == PASSWORD_HASH
     
     if not password_valid:
-        return jsonify({'error': 'Invalid password'}), 401
+        response = jsonify({'error': 'Invalid password'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 401
     
     # Generate JWT token
     expiry = datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
@@ -1000,6 +1007,21 @@ def serve_logo():
         return "Logo not found", 404
     except Exception as e:
         return f"Error loading logo: {str(e)}", 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    """Return JSON for 404 errors on API routes"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'API endpoint not found'}), 404
+    return "Page not found", 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Return JSON for 500 errors on API routes"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return "Internal server error", 500
 
 @app.route('/')
 def serve_web_interface():
