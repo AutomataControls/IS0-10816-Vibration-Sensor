@@ -25,9 +25,20 @@ import threading
 import os
 import sys
 import time
-import requests
-from PIL import Image, ImageTk
 import io
+
+# Check if PIL is available
+PIL_AVAILABLE = True
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    PIL_AVAILABLE = False
+    print("Warning: PIL not available, logos will not be displayed")
+
+try:
+    import requests
+except ImportError:
+    requests = None
 
 class InstallerWindow:
     def __init__(self, root):
