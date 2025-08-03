@@ -558,15 +558,31 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             return False
             
     def clone_repository(self):
-        self.log("Cloning repository...")
-        os.chdir("/opt/automatanexus")
-        success, _ = self.run_command("git clone https://github.com/AutomataControls/IS0-10816-Vibration-Sensor.git")
-        if success:
-            self.log("✓ Repository cloned successfully", "success")
-            return True
+        self.log("Setting up repository...")
+        
+        # Check if we're already in the repository
+        current_dir = os.getcwd()
+        if "IS0-10816-Vibration-Sensor" in current_dir:
+            self.log("Already in repository, copying files...")
+            # Copy current directory to installation location
+            success, output = self.run_command(f"sudo cp -r {current_dir} /opt/automatanexus/")
+            if success:
+                self.log("✓ Files copied successfully", "success")
+                return True
+            else:
+                self.log(f"✗ Failed to copy files: {output}", "error")
+                return False
         else:
-            self.log("✗ Failed to clone repository", "error")
-            return False
+            # Clone fresh repository
+            self.log("Cloning repository...")
+            os.chdir("/opt/automatanexus")
+            success, _ = self.run_command("git clone https://github.com/AutomataControls/IS0-10816-Vibration-Sensor.git")
+            if success:
+                self.log("✓ Repository cloned successfully", "success")
+                return True
+            else:
+                self.log("✗ Failed to clone repository", "error")
+                return False
             
     def setup_service(self):
         self.log("Setting up systemd service...")
