@@ -607,9 +607,19 @@ BY CLICKING "I ACCEPT", YOU ACKNOWLEDGE THAT YOU HAVE READ, UNDERSTOOD, AND AGRE
         for pkg in packages:
             self.log(f"  Checking {pkg}...")
             # First try importing to see if already available
-            check_cmd = f"python3 -c 'import {pkg.lower()}' 2>/dev/null"
+            import_name = pkg.lower()
             if pkg == "Pillow":
-                check_cmd = "python3 -c 'import PIL' 2>/dev/null"
+                import_name = "PIL"
+            elif pkg == "pyserial":
+                import_name = "serial"
+            elif pkg == "PyJWT":
+                import_name = "jwt"
+            elif pkg == "python-dotenv":
+                import_name = "dotenv"
+            elif pkg == "flask-cors":
+                import_name = "flask_cors"
+            
+            check_cmd = f"python3 -c 'import {import_name}' 2>/dev/null"
             
             success, _ = self.run_command(check_cmd)
             if not success:

@@ -961,10 +961,12 @@ def login():
             import bcrypt
             # Ensure PASSWORD_HASH is bytes for bcrypt
             password_valid = bcrypt.checkpw(password.encode('utf-8'), PASSWORD_HASH.encode('utf-8'))
+            print(f"Auth: bcrypt validation = {password_valid}")
         else:
             # SHA256 hash comparison
             password_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
             password_valid = password_hash == PASSWORD_HASH
+            print(f"Auth: SHA256 validation = {password_valid}")
     except Exception as e:
         print(f"Password verification error: {e}")
         print(f"PASSWORD_HASH type: {type(PASSWORD_HASH)}, starts with: {PASSWORD_HASH[:10] if PASSWORD_HASH else 'None'}")
