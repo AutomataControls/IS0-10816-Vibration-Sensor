@@ -758,6 +758,15 @@ if [ "$(check_flask)" != "200" ]; then
     exit 1
 fi
 
+# Get network IP for display
+NETWORK_IP=$(hostname -I | awk '{print $1}')
+echo ""
+echo "=== Access Information ==="
+echo "Local access: $URL"
+echo "Network access: http://$NETWORK_IP:5000/monitoring-app.html"
+echo "=========================="
+echo ""
+
 # Launch browser and wait for it to close
 echo "Launching monitoring interface..."
 if command -v chromium-browser &> /dev/null; then

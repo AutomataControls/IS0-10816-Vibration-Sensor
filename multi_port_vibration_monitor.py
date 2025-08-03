@@ -1605,18 +1605,33 @@ def main():
     api_thread.daemon = True
     api_thread.start()
     
-    print(f"\nWeb API started on http://localhost:{api_port}")
+    # Get the Pi's IP address
+    import socket
+    try:
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        # Better method to get actual network IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        network_ip = s.getsockname()[0]
+        s.close()
+    except:
+        network_ip = "your-pi-ip"
+    
+    print(f"\nWeb API started!")
+    print(f"Access locally: http://localhost:{api_port}/monitoring-app.html")
+    print(f"Access from network: http://{network_ip}:{api_port}/monitoring-app.html")
     
     # Check if already configured
     if monitor_instance.configured:
-        print("Found saved configuration. Starting monitoring automatically...")
+        print("\nFound saved configuration. Starting monitoring automatically...")
         # Start monitoring in a separate thread
         monitor_thread = threading.Thread(target=monitor_instance.run_monitoring)
         monitor_thread.daemon = True
         monitor_thread.start()
     else:
         print("\nNo configuration found. Please configure equipment via web interface.")
-        print(f"Open http://localhost:{api_port} to configure sensors.")
+        print(f"Open http://{network_ip}:{api_port}/monitoring-app.html to configure sensors.")
     
     # Keep the main thread alive
     try:
