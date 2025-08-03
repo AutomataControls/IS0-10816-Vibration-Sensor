@@ -370,21 +370,21 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
         button_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Create buttons with moderate padding
+        # Create buttons with reasonable size
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
-                                              font=("Arial", 12), bg="#e5e7eb", 
+                                              font=("Arial", 11), bg="#e5e7eb", 
                                               fg=self.text_color, 
                                               relief=tk.FLAT, command=self.root.quit,
-                                              padx=35, pady=20)
+                                              padx=20, pady=8)
         self.cancel_welcome_button.pack(side=tk.LEFT, padx=10)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
-                                      font=("Arial", 12, "bold"), 
+                                      font=("Arial", 11, "bold"), 
                                       bg=self.primary_color, fg="white",
                                       relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license,
-                                      padx=35, pady=20)
+                                      padx=20, pady=8)
         self.accept_button.pack(side=tk.RIGHT, padx=10)
         
     def check_accept_button(self):
