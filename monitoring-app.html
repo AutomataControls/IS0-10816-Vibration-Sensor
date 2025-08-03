@@ -358,7 +358,8 @@
 
     <script>
         // Simple and working JavaScript
-        const API_BASE = 'http://localhost:5000/api';
+        // Use the current host for API calls (works both locally and remotely)
+        const API_BASE = window.location.protocol + '//' + window.location.hostname + ':5000/api';
         let updateInterval;
         let trendChart;
         let chartData = {
