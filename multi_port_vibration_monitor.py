@@ -669,6 +669,47 @@ class MultiPortVibrationMonitor:
             print(f"Error loading configuration: {e}")
 
 # Flask API Routes
+@app.route('/monitoring-app.html')
+def serve_monitoring_app():
+    """Serve the monitoring app HTML file"""
+    import os
+    try:
+        # Try multiple possible locations
+        possible_paths = [
+            'monitoring-app.html',
+            os.path.join(os.path.dirname(__file__), 'monitoring-app.html'),
+            '/opt/automatanexus/IS0-10816-Vibration-Sensor/monitoring-app.html'
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    return f.read()
+                    
+        return "monitoring-app.html not found", 404
+    except Exception as e:
+        return f"Error loading monitoring app: {str(e)}", 500
+
+@app.route('/automata-nexus-logo.png')
+def serve_logo():
+    """Serve the logo image"""
+    import os
+    from flask import send_file
+    try:
+        possible_paths = [
+            'automata-nexus-logo.png',
+            os.path.join(os.path.dirname(__file__), 'automata-nexus-logo.png'),
+            '/opt/automatanexus/IS0-10816-Vibration-Sensor/automata-nexus-logo.png'
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                return send_file(path, mimetype='image/png')
+                
+        return "Logo not found", 404
+    except Exception as e:
+        return f"Error loading logo: {str(e)}", 500
+
 @app.route('/')
 def serve_web_interface():
     """Serve the web interface"""

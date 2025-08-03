@@ -636,15 +636,26 @@ WantedBy=multi-user.target"""
         launcher_script = """#!/bin/bash
 # Wait for service to be ready
 sleep 2
+
+# Ensure we're using HTTP, not file://
+URL="http://localhost:5000/monitoring-app.html"
+
+# Check if service is running
+if ! systemctl is-active --quiet vibration-monitor; then
+    echo "Starting vibration monitor service..."
+    sudo systemctl start vibration-monitor
+    sleep 3
+fi
+
 # Try to open in app mode if possible
 if command -v chromium-browser &> /dev/null; then
-    chromium-browser --app=http://localhost:5000/monitoring-app.html
+    chromium-browser --app="$URL"
 elif command -v chromium &> /dev/null; then
-    chromium --app=http://localhost:5000/monitoring-app.html
+    chromium --app="$URL"
 elif command -v firefox &> /dev/null; then
-    firefox --new-window http://localhost:5000/monitoring-app.html
+    firefox --new-window "$URL"
 else
-    xdg-open http://localhost:5000/monitoring-app.html
+    xdg-open "$URL"
 fi
 """
         launcher_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/launch-monitor.sh"
