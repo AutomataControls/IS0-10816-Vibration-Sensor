@@ -130,7 +130,7 @@ class InstallerWindow:
         
         subtitle_label = tk.Label(
             title_frame,
-            text="Professional Installation Wizard",
+            text="Installation Wizard",
             font=("Arial", 12),
             fg="#6b7280",
             bg=self.bg_color
@@ -260,7 +260,9 @@ class InstallerWindow:
         try:
             logo_paths = [
                 "automata-nexus-logo.png",
-                os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png")
+                os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png"),
+                os.path.join(os.getcwd(), "automata-nexus-logo.png"),
+                "/home/Automata/IS0-10816-Vibration-Sensor/automata-nexus-logo.png"
             ]
             for logo_path in logo_paths:
                 if os.path.exists(logo_path):
@@ -352,14 +354,14 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
                                               font=("Arial", 12), bg="#e5e7eb", 
-                                              fg=self.text_color, padx=30, pady=10,
+                                              fg=self.text_color, padx=40, pady=15,
                                               relief=tk.FLAT, command=self.root.quit)
         self.cancel_welcome_button.pack(side=tk.LEFT)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
                                       font=("Arial", 12, "bold"), 
                                       bg=self.primary_color, fg="white",
-                                      padx=30, pady=10, relief=tk.FLAT,
+                                      padx=40, pady=15, relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license)
         self.accept_button.pack(side=tk.RIGHT)
@@ -568,17 +570,21 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
             
     def setup_service(self):
         self.log("Setting up systemd service...")
-        service_content = """[Unit]
+        # Get current user
+        current_user = os.environ.get('USER', 'pi')
+        
+        service_content = f"""[Unit]
 Description=AutomataNexus Vibration Monitor
 After=network.target
 
 [Service]
 Type=simple
-User=pi
+User={current_user}
 WorkingDirectory=/opt/automatanexus/IS0-10816-Vibration-Sensor
 ExecStart=/usr/bin/python3 /opt/automatanexus/IS0-10816-Vibration-Sensor/multi_port_vibration_monitor.py
 Restart=always
 RestartSec=10
+Environment="PYTHONUNBUFFERED=1"
 
 [Install]
 WantedBy=multi-user.target"""
@@ -589,7 +595,9 @@ WantedBy=multi-user.target"""
             self.run_command("sudo mv /tmp/vibration-monitor.service /etc/systemd/system/")
             self.run_command("sudo systemctl daemon-reload")
             self.run_command("sudo systemctl enable vibration-monitor.service")
-            self.log("✓ Service configured", "success")
+            # Also start the service
+            self.run_command("sudo systemctl start vibration-monitor.service")
+            self.log("✓ Service configured and started", "success")
             return True
         except Exception as e:
             self.log(f"✗ Failed to setup service: {e}", "error")
