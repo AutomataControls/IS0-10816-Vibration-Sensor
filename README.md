@@ -32,11 +32,12 @@ chmod +x install.sh
 
 The installer automatically:
 - ✅ Detects GUI/CLI environment
-- ✅ Installs all dependencies
+- ✅ Installs all dependencies (uses --break-system-packages on newer systems)
 - ✅ Creates desktop shortcuts with service control
 - ✅ Configures SQLite database with 7-day retention
 - ✅ Sets up API security with password protection
 - ✅ Creates systemd service (manual start via desktop icon)
+- ✅ Copies only runtime files to /opt/automatanexus/
 
 ## 📋 Features
 
@@ -57,32 +58,57 @@ The installer automatically:
 
 ## 🔧 System Requirements
 
+### Hardware
 - Raspberry Pi 3B+ or newer (4B recommended)
-- Python 3.8+
 - 1-5 USB-to-RS485 adapters
-- WitMotion WTVB01-485 sensors
+- WitMotion WTVB01-485 sensors (Modbus RTU address 0x50)
+
+### Software
+- Python 3.8+
+- Raspberry Pi OS (Bullseye or newer)
+- GUI environment for installer (or use CLI installer)
+
+### Python Dependencies (auto-installed)
+- flask, flask-cors
+- pyserial
+- numpy
+- PyJWT, python-dotenv
+- bcrypt (optional, falls back to hashlib)
+- Pillow (optional for GUI installer logos)
 
 ## 📁 Repository Structure
 
 ```
 IS0-10816-Vibration-Sensor/
-├── multi_port_vibration_monitor.py    # Main monitoring application
-├── monitoring-app.html                # Web dashboard interface
-├── vibration-monitor-desktop.py       # Desktop launcher
-├── install.sh                         # Master installer (GUI/CLI)
-├── install-on-pi.sh                  # Raspberry Pi CLI installer
-├── install-gui.py                    # GUI installer with progress
-├── node-red-contrib-*/               # Node-RED custom nodes
-├── node-red-examples.json            # Example flows
-├── docs/                             # Documentation
-│   ├── RASPBERRY_PI_SETUP.md        # Detailed Pi setup
-│   ├── NODE_RED_INTEGRATION.md      # Node-RED guide
-│   └── ISO-10816-Motor-Vibration-Guide.md
-├── tools/                            # Utility scripts
-│   ├── diagnose_sensor.py
-│   └── change_sensor_address.py
-└── IS0-10816-Vibration-Monitor-UI/   # Tauri desktop app
-
+├── Runtime Files (Installed to /opt/automatanexus/)
+│   ├── multi_port_vibration_monitor.py    # Main monitoring application
+│   ├── monitoring-app.html                # Web dashboard interface
+│   ├── automata-nexus-logo.png           # Company logo
+│   ├── uninstall.sh                      # Uninstaller script
+│   ├── show-network-info.sh              # Network utility
+│   ├── docs/                             # Documentation
+│   │   ├── RASPBERRY_PI_SETUP.md        # Detailed Pi setup
+│   │   ├── NODE_RED_INTEGRATION.md      # Node-RED guide
+│   │   └── ISO-10816-Motor-Vibration-Guide.md
+│   ├── tools/                            # Diagnostic utilities
+│   │   ├── diagnose_sensor.py           # Sensor troubleshooting
+│   │   └── change_sensor_address.py     # Modbus address tool
+│   └── node-red-contrib-*/               # Optional Node-RED package
+│
+├── Development Files (Not installed)
+│   ├── install.sh                        # Master installer selector
+│   ├── install-gui.py                    # GUI installer (Tkinter)
+│   ├── install-on-pi.sh                 # CLI installer
+│   ├── create-icon.py                    # Icon generator
+│   ├── build-release.sh                  # Release builder
+│   └── IS0-10816-Vibration-Monitor-UI/   # Tauri desktop app source
+│
+└── Generated Files (Created during runtime)
+    ├── .env                              # API keys & BMS config
+    ├── equipment_config.json             # Sensor configurations
+    ├── vibration_metrics.db              # SQLite database
+    ├── launch-monitor.sh                 # Desktop launcher
+    └── *.csv                            # Data export files
 ```
 
 ## 🌐 Web Interface
@@ -251,6 +277,10 @@ See [LICENSE](LICENSE) for details.
 - 🔧 Fixed GUI installer to handle installation from cloned repo
 - 🖱️ Desktop icon now controls service lifecycle
 - 📊 Individual sensor metrics sent to BMS with configured names
+- 📦 Installer now copies only runtime files (excludes dev files)
+- 🖼️ Fixed installer button heights and logo display
+- 🎨 Updated UI with better Unicode icons and ultra-light colors
+- 🔧 Fixed PIL compatibility for older Pillow versions
 
 ### v3.0.0-alpha.1
 - 🗄️ SQLite database with 7-day retention
