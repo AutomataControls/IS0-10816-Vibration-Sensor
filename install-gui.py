@@ -54,6 +54,20 @@ class InstallerWindow:
         
         # Start with welcome screen
         self.accepted_license = False
+        self.current_step = 0
+        self.installation_complete = False
+        
+        # Initialize variables that will be created later
+        self.main_frame = None
+        self.log_text = None
+        self.progress_bar = None
+        self.progress_label = None
+        self.task_label = None
+        self.install_button = None
+        self.close_button = None
+        self.steps = []
+        
+        # Show welcome screen - this should be the ONLY thing shown initially
         self.show_welcome_screen()
         
     def create_header(self):
@@ -594,29 +608,95 @@ WantedBy=multi-user.target"""
             
     def create_shortcuts(self):
         self.log("Creating desktop shortcuts...")
-        desktop_entry = """[Desktop Entry]
+        
+        # First, copy the logo to the installation directory
+        try:
+            logo_src = os.path.join(os.path.dirname(__file__), "automata-nexus-logo.png")
+            logo_dst = "/opt/automatanexus/IS0-10816-Vibration-Sensor/automata-nexus-logo.png"
+            if os.path.exists(logo_src):
+                self.run_command(f"sudo cp {logo_src} {logo_dst}")
+                self.run_command(f"sudo chmod 644 {logo_dst}")
+                icon_path = logo_dst
+            else:
+                # Create a simple icon if logo not found
+                icon_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/icon.png"
+                self.log("  Creating fallback icon...", "warning")
+        except:
+            icon_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/icon.png"
+            
+        # Create a launcher script first
+        launcher_script = """#!/bin/bash
+# Wait for service to be ready
+sleep 2
+# Try to open in app mode if possible
+if command -v chromium-browser &> /dev/null; then
+    chromium-browser --app=http://localhost:5000/monitoring-app.html
+elif command -v chromium &> /dev/null; then
+    chromium --app=http://localhost:5000/monitoring-app.html
+elif command -v firefox &> /dev/null; then
+    firefox --new-window http://localhost:5000/monitoring-app.html
+else
+    xdg-open http://localhost:5000/monitoring-app.html
+fi
+"""
+        launcher_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/launch-monitor.sh"
+        try:
+            with open("/tmp/launch-monitor.sh", "w") as f:
+                f.write(launcher_script)
+            self.run_command("sudo mv /tmp/launch-monitor.sh " + launcher_path)
+            self.run_command(f"sudo chmod +x {launcher_path}")
+            self.log("  ✓ Launcher script created", "success")
+        except Exception as e:
+            self.log(f"  ⚠ Failed to create launcher: {e}", "warning")
+            
+        desktop_entry = f"""[Desktop Entry]
+Version=1.0
 Type=Application
 Name=Vibration Monitor
 Comment=AutomataNexus Vibration Monitoring System
-Icon=/opt/automatanexus/IS0-10816-Vibration-Sensor/icon.png
-Exec=chromium-browser --app=http://localhost:5000/monitoring-app.html
+Icon={icon_path}
+Exec={launcher_path}
 Terminal=false
-Categories=Utility;"""
+Categories=Utility;System;Monitor;
+StartupNotify=true
+StartupWMClass=chromium-browser"""
         
+        shortcuts_created = 0
+        
+        # Create desktop shortcut
         try:
             desktop_path = os.path.expanduser("~/Desktop")
-            if not os.path.exists(desktop_path):
-                os.makedirs(desktop_path)
+            if os.path.exists(desktop_path):
+                desktop_file = f"{desktop_path}/vibration-monitor.desktop"
+                with open(desktop_file, "w") as f:
+                    f.write(desktop_entry)
+                os.chmod(desktop_file, 0o755)
                 
-            with open(f"{desktop_path}/vibration-monitor.desktop", "w") as f:
-                f.write(desktop_entry)
-                
-            os.chmod(f"{desktop_path}/vibration-monitor.desktop", 0o755)
-            self.log("✓ Desktop shortcut created", "success")
-            return True
+                # Mark as trusted on some systems
+                self.run_command(f"gio set {desktop_file} metadata::trusted true", shell=True)
+                self.log("  ✓ Desktop shortcut created", "success")
+                shortcuts_created += 1
         except Exception as e:
-            self.log(f"✗ Failed to create shortcuts: {e}", "error")
-            return False
+            self.log(f"  ⚠ Desktop shortcut failed: {e}", "warning")
+            
+        # Create menu entry
+        try:
+            menu_path = os.path.expanduser("~/.local/share/applications")
+            if not os.path.exists(menu_path):
+                os.makedirs(menu_path)
+            menu_file = f"{menu_path}/vibration-monitor.desktop"
+            with open(menu_file, "w") as f:
+                f.write(desktop_entry)
+            os.chmod(menu_file, 0o755)
+            self.log("  ✓ Menu entry created", "success")
+            shortcuts_created += 1
+            
+            # Update desktop database
+            self.run_command("update-desktop-database ~/.local/share/applications", shell=True)
+        except Exception as e:
+            self.log(f"  ⚠ Menu entry failed: {e}", "warning")
+            
+        return shortcuts_created > 0
             
     def finalize_installation(self):
         self.log("Finalizing installation...")
