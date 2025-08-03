@@ -610,10 +610,10 @@ WantedBy=multi-user.target"""
                 f.write(service_content)
             self.run_command("sudo mv /tmp/vibration-monitor.service /etc/systemd/system/")
             self.run_command("sudo systemctl daemon-reload")
-            self.run_command("sudo systemctl enable vibration-monitor.service")
-            # Also start the service
-            self.run_command("sudo systemctl start vibration-monitor.service")
-            self.log("✓ Service configured and started", "success")
+            # Don't enable or start - let the desktop icon control it
+            # self.run_command("sudo systemctl enable vibration-monitor.service")
+            # self.run_command("sudo systemctl start vibration-monitor.service")
+            self.log("✓ Service configured (manual start via desktop icon)", "success")
             return True
         except Exception as e:
             self.log(f"✗ Failed to setup service: {e}", "error")
@@ -651,6 +651,7 @@ WantedBy=multi-user.target"""
         # Create a launcher script first
         launcher_script = """#!/bin/bash
 # AutomataNexus Vibration Monitor Launcher
+# This script starts the service, opens the UI, and stops the service when closed
 
 # Ensure we're using HTTP, not file://
 URL="http://localhost:5000/monitoring-app.html"
@@ -660,11 +661,26 @@ check_flask() {
     curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null
 }
 
-# Check if service is running
-if ! systemctl is-active --quiet vibration-monitor; then
-    echo "Starting vibration monitor service..."
-    sudo systemctl start vibration-monitor
+# Function to cleanup on exit
+cleanup() {
+    echo "Stopping vibration monitor service..."
+    sudo systemctl stop vibration-monitor
+    exit 0
+}
+
+# Trap exit signals to ensure cleanup
+trap cleanup EXIT INT TERM
+
+# Stop any existing instance first
+if systemctl is-active --quiet vibration-monitor; then
+    echo "Stopping existing instance..."
+    sudo systemctl stop vibration-monitor
+    sleep 2
 fi
+
+# Start the service
+echo "Starting vibration monitor service..."
+sudo systemctl start vibration-monitor
 
 # Wait for Flask to be ready (up to 30 seconds)
 echo "Waiting for monitoring service to start..."
@@ -678,26 +694,28 @@ done
 
 # Final check before opening browser
 if [ "$(check_flask)" != "200" ]; then
-    # Service might be failing, try to debug
-    echo "Service not responding. Checking status..."
+    echo "ERROR: Service failed to start properly"
+    echo "Checking service status..."
     systemctl status vibration-monitor --no-pager
-    
-    # Try to restart once more
-    echo "Attempting restart..."
-    sudo systemctl restart vibration-monitor
-    sleep 5
+    echo ""
+    echo "Press Enter to exit..."
+    read
+    exit 1
 fi
 
-# Try to open in app mode if possible
+# Launch browser and wait for it to close
+echo "Launching monitoring interface..."
 if command -v chromium-browser &> /dev/null; then
-    chromium-browser --app="$URL" 2>/dev/null &
+    chromium-browser --app="$URL" 2>/dev/null
 elif command -v chromium &> /dev/null; then
-    chromium --app="$URL" 2>/dev/null &
+    chromium --app="$URL" 2>/dev/null
 elif command -v firefox &> /dev/null; then
-    firefox --new-window "$URL" 2>/dev/null &
+    firefox --new-window "$URL" 2>/dev/null
 else
-    xdg-open "$URL" 2>/dev/null &
+    xdg-open "$URL" 2>/dev/null
 fi
+
+# Browser closed, cleanup will happen via trap
 """
         launcher_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/launch-monitor.sh"
         try:
@@ -764,8 +782,8 @@ StartupWMClass=chromium-browser"""
         self.log("✓ Installation complete!", "success")
         self.log("\nNext steps:", "info")
         self.log("1. Reboot your Raspberry Pi: sudo reboot")
-        self.log("2. Access the monitor at: http://localhost:5000/monitoring-app.html")
-        self.log("3. Or click the 'Vibration Monitor' desktop icon")
+        self.log("2. Click the 'Vibration Monitor' desktop icon to start")
+        self.log("3. The service will stop when you close the browser")
         return True
         
     def start_installation(self):
