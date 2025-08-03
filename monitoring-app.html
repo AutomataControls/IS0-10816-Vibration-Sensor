@@ -295,24 +295,24 @@
         </div>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <span id="connection-status" class="status offline">Offline</span>
-            <button class="btn" onclick="keepRunning()" style="background: #28a745;">⏯️ Keep Running</button>
-            <button class="btn" onclick="showBMSConfig()" style="background: #17a2b8;">🔗 Link to BMS</button>
+            <button class="btn" onclick="keepRunning()" style="background: #a7f3d0; color: #047857;">▶ Keep Running</button>
+            <button class="btn" onclick="showBMSConfig()" style="background: #a5f3fc; color: #0e7490;">≡ Link to BMS</button>
             <button class="btn" onclick="location.reload()">↻ Refresh</button>
         </div>
     </div>
 
     <div class="tabs">
         <button class="tab active" onclick="showTab('monitoring', this)">
-            <span style="font-size: 18px;">📊</span> Monitoring
+            <span style="font-size: 18px;">▣</span> Monitoring
         </button>
         <button class="tab" onclick="showTab('config', this)">
-            <span style="font-size: 18px;">⚙️</span> Configuration
+            <span style="font-size: 18px;">☰</span> Configuration
         </button>
         <button class="tab" onclick="showTab('calibration', this)">
-            <span style="font-size: 18px;">🎯</span> Calibration
+            <span style="font-size: 18px;">◎</span> Calibration
         </button>
         <button class="tab" onclick="showTab('control', this)">
-            <span style="font-size: 18px;">🎛️</span> Control
+            <span style="font-size: 18px;">▼</span> Control
         </button>
     </div>
 
@@ -334,7 +334,7 @@
         <!-- Configuration Tab -->
         <div id="config" class="section">
             <h2 style="margin-bottom: 1rem;">Equipment Configuration</h2>
-            <button class="btn" onclick="scanPorts()" style="margin-bottom: 1rem;">🔍 Scan for USB Ports</button>
+            <button class="btn" onclick="scanPorts()" style="margin-bottom: 1rem;">◐ Scan for USB Ports</button>
             <div id="config-list" class="sensor-grid"></div>
         </div>
 
@@ -349,8 +349,8 @@
         <div id="control" class="section">
             <h2 style="margin-bottom: 1rem;">System Control</h2>
             <div style="display: flex; gap: 1rem;">
-                <button class="btn" onclick="startMonitoring()">▶️ Start Monitoring</button>
-                <button class="btn" onclick="stopMonitoring()" style="background: #dc3545;">⏹️ Stop Monitoring</button>
+                <button class="btn" onclick="startMonitoring()">▶ Start Monitoring</button>
+                <button class="btn" onclick="stopMonitoring()" style="background: #dc3545;">■ Stop Monitoring</button>
             </div>
             <div id="control-status" style="margin-top: 2rem;"></div>
         </div>
@@ -375,6 +375,16 @@
         async function checkAuthStatus() {
             try {
                 const response = await fetch(`${API_BASE}/auth/status`);
+                
+                // Check if response is JSON
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    console.error('Auth status endpoint returned non-JSON response');
+                    // Assume auth is not required if endpoint returns HTML
+                    authRequired = false;
+                    return;
+                }
+                
                 const data = await response.json();
                 authRequired = data.auth_enabled;
                 
@@ -391,6 +401,8 @@
                 }
             } catch (error) {
                 console.error('Error checking auth status:', error);
+                // If we can't check auth status, assume it's not required
+                authRequired = false;
             }
         }
         
@@ -888,14 +900,16 @@
         }
 
         // Initialize chart when page loads
-        window.addEventListener('DOMContentLoaded', () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             initTrendChart();
-            // Check auth status first
-            checkAuthStatus();
+            // Check auth status first, then start updates
+            await checkAuthStatus();
+            
+            // Only start auto-update if we're authenticated or auth is not required
+            if (!authRequired || authToken) {
+                startAutoUpdate();
+            }
         });
-
-        // Start loading data
-        startAutoUpdate();
         
         // Calibration functions
         async function loadCalibration() {
@@ -926,7 +940,7 @@
                             
                             <div class="form-group">
                                 <button class="btn" onclick="zeroSensor('${sensor.port}')" style="width: 100%; margin-bottom: 1rem;">
-                                    🎯 Set Zero Point
+                                    ◎ Set Zero Point
                                 </button>
                             </div>
                             
