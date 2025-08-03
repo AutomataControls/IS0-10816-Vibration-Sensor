@@ -25,9 +25,16 @@ if [ -n "$DISPLAY" ]; then
         echo "Starting GUI installer..."
         
         # Install PIL if needed (for logo handling)
-        if ! python3 -c "import PIL" 2>/dev/null; then
-            echo "Installing image processing library..."
-            sudo apt install -y python3-pil python3-pil.imagetk 2>/dev/null || true
+        if ! python3 -c "from PIL import ImageTk" 2>/dev/null; then
+            echo "Installing image processing libraries..."
+            sudo apt update
+            sudo apt install -y python3-pil python3-pil.imagetk
+            
+            # If still not working, try pip
+            if ! python3 -c "from PIL import ImageTk" 2>/dev/null; then
+                echo "Installing via pip..."
+                sudo pip3 install --upgrade Pillow
+            fi
         fi
         
         # Make sure GUI installer is executable
