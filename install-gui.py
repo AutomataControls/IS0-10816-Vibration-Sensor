@@ -650,28 +650,53 @@ WantedBy=multi-user.target"""
             
         # Create a launcher script first
         launcher_script = """#!/bin/bash
-# Wait for service to be ready
-sleep 2
+# AutomataNexus Vibration Monitor Launcher
 
 # Ensure we're using HTTP, not file://
 URL="http://localhost:5000/monitoring-app.html"
+
+# Function to check if Flask is responding
+check_flask() {
+    curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null
+}
 
 # Check if service is running
 if ! systemctl is-active --quiet vibration-monitor; then
     echo "Starting vibration monitor service..."
     sudo systemctl start vibration-monitor
-    sleep 3
+fi
+
+# Wait for Flask to be ready (up to 30 seconds)
+echo "Waiting for monitoring service to start..."
+for i in {1..30}; do
+    if [ "$(check_flask)" = "200" ]; then
+        echo "Service is ready!"
+        break
+    fi
+    sleep 1
+done
+
+# Final check before opening browser
+if [ "$(check_flask)" != "200" ]; then
+    # Service might be failing, try to debug
+    echo "Service not responding. Checking status..."
+    systemctl status vibration-monitor --no-pager
+    
+    # Try to restart once more
+    echo "Attempting restart..."
+    sudo systemctl restart vibration-monitor
+    sleep 5
 fi
 
 # Try to open in app mode if possible
 if command -v chromium-browser &> /dev/null; then
-    chromium-browser --app="$URL"
+    chromium-browser --app="$URL" 2>/dev/null &
 elif command -v chromium &> /dev/null; then
-    chromium --app="$URL"
+    chromium --app="$URL" 2>/dev/null &
 elif command -v firefox &> /dev/null; then
-    firefox --new-window "$URL"
+    firefox --new-window "$URL" 2>/dev/null &
 else
-    xdg-open "$URL"
+    xdg-open "$URL" 2>/dev/null &
 fi
 """
         launcher_path = "/opt/automatanexus/IS0-10816-Vibration-Sensor/launch-monitor.sh"
@@ -691,7 +716,7 @@ Name=Vibration Monitor
 Comment=AutomataNexus Vibration Monitoring System
 Icon={icon_path}
 Exec={launcher_path}
-Terminal=false
+Terminal=true
 Categories=Utility;System;Monitor;
 StartupNotify=true
 StartupWMClass=chromium-browser"""
