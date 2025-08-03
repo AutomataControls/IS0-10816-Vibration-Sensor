@@ -133,6 +133,37 @@
         }
         .status.online { background: #d4edda; color: #155724; }
         .status.offline { background: #f8d7da; color: #721c24; }
+        .bms-status {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-left: 0.5rem;
+        }
+        .bms-status.sent { 
+            background: #e0f2fe; /* ultra light blue */
+            color: #075985; /* darker blue for contrast */
+        }
+        .bms-status.failed { 
+            background: #e5e7eb; /* grey */
+            color: #374151;
+        }
+        .bms-status.disabled { 
+            background: #f3f4f6; /* light grey */
+            color: #9ca3af;
+        }
+        .bms-config-btn {
+            padding: 0.3rem 0.8rem;
+            font-size: 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 0.5rem;
+        }
+        .bms-config-btn:hover { background: #2563eb; }
         .chart-container {
             background: white;
             border-radius: 8px;
@@ -237,10 +268,12 @@
     <div id="bms-modal" class="login-modal">
         <div class="login-form" style="max-width: 500px;">
             <h2>BMS Integration Configuration</h2>
+            <h3 id="bms-sensor-name" style="color: #4b5563; font-size: 16px; margin-bottom: 1rem;"></h3>
             <p style="color: #666; font-size: 14px; margin-bottom: 1rem;">
-                Configure InfluxDB connection to send vibration metrics to your Building Management System.
-                Each sensor will be sent as a separate metric with its configured name as the system name.
+                Configure InfluxDB connection for this sensor. Metrics will be sent independently with the sensor's configured name.
             </p>
+            
+            <input type="hidden" id="bms-sensor-port" value="">
             
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">BMS URL</label>
@@ -250,11 +283,6 @@
             <div style="margin-bottom: 1rem;">
                 <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">Location Name</label>
                 <input type="text" id="bms-location-name" placeholder="e.g., BuildingA">
-            </div>
-            
-            <div style="margin-bottom: 1rem;">
-                <label style="display: block; margin-bottom: 0.25rem; font-weight: bold;">System Name</label>
-                <input type="text" id="bms-system-name" placeholder="e.g., VibrationMonitor1">
             </div>
             
             <div style="margin-bottom: 1rem;">
@@ -275,11 +303,12 @@
             <div style="margin-bottom: 1rem;">
                 <label style="display: inline-flex; align-items: center;">
                     <input type="checkbox" id="bms-enabled" style="width: auto; margin-right: 0.5rem;">
-                    Enable BMS Integration
+                    Enable BMS Integration for this Sensor
                 </label>
             </div>
             
             <div id="bms-error" class="error"></div>
+            <div id="bms-status" style="margin-top: 0.5rem; color: #059669;"></div>
             
             <div style="display: flex; gap: 1rem;">
                 <button onclick="saveBMSConfig()">Save Configuration</button>
@@ -296,7 +325,6 @@
         <div style="display: flex; align-items: center; gap: 1rem;">
             <span id="connection-status" class="status offline">Offline</span>
             <button class="btn" onclick="keepRunning()" style="background: #a7f3d0; color: #047857;">▶ Keep Running</button>
-            <button class="btn" onclick="showBMSConfig()" style="background: #a5f3fc; color: #0e7490;">≡ Link to BMS</button>
             <button class="btn" onclick="location.reload()">↻ Refresh</button>
         </div>
     </div>
@@ -515,9 +543,26 @@
                     return;
                 }
                 
-                container.innerHTML = Object.entries(data).map(([name, sensor]) => `
+                container.innerHTML = Object.entries(data).map(([name, sensor]) => {
+                    // Extract port from sensor name
+                    const portMatch = name.match(/\((ttyUSB\d+)\)/);
+                    const port = portMatch ? portMatch[1] : sensor.port || 'unknown';
+                    
+                    // Determine BMS status display
+                    let bmsStatusHtml = '';
+                    if (sensor.bms_enabled) {
+                        const statusClass = sensor.bms_status || 'disabled';
+                        const statusText = statusClass === 'sent' ? 'BMS Sent' : 
+                                         statusClass === 'failed' ? 'BMS Failed' : 'BMS Off';
+                        bmsStatusHtml = `<span class="bms-status ${statusClass}">${statusText}</span>`;
+                    }
+                    
+                    return `
                     <div class="sensor-card zone-${sensor.iso_zone.toLowerCase()}">
-                        <h3 style="margin-bottom: 1rem;">${name}</h3>
+                        <h3 style="margin-bottom: 1rem;">
+                            ${name}
+                            ${bmsStatusHtml}
+                        </h3>
                         <div class="metric">
                             <span>Temperature</span>
                             <strong>${sensor.temperature_f.toFixed(1)}°F</strong>
@@ -538,8 +583,11 @@
                             <span class="tooltip" data-tooltip="Overall equipment status based on ISO standards">Status</span>
                             <strong>${sensor.alert_level}</strong>
                         </div>
+                        <button class="bms-config-btn" onclick="showBMSConfigForSensor('${port}', '${name.replace(/'/g, "\\'")}')">
+                            ≡ Configure BMS
+                        </button>
                     </div>
-                `).join('');
+                `}).join('');
                 
                 // Update trend chart
                 updateTrendChart(data);
@@ -1109,29 +1157,38 @@
             }
         }
         
-        // BMS Configuration functions
-        function showBMSConfig() {
+        // BMS Configuration functions (per-sensor)
+        function showBMSConfigForSensor(port, sensorName) {
+            document.getElementById('bms-sensor-port').value = port;
+            document.getElementById('bms-sensor-name').textContent = `Sensor: ${sensorName}`;
             document.getElementById('bms-modal').style.display = 'flex';
-            loadBMSConfig();
+            loadBMSConfig(port);
         }
         
         function closeBMSModal() {
             document.getElementById('bms-modal').style.display = 'none';
             document.getElementById('bms-error').textContent = '';
+            document.getElementById('bms-status').textContent = '';
         }
         
-        async function loadBMSConfig() {
+        async function loadBMSConfig(port) {
             try {
-                const response = await authenticatedFetch(`${API_BASE}/bms/config`);
+                const response = await authenticatedFetch(`${API_BASE}/bms/config/${port}`);
                 if (response.ok) {
                     const config = await response.json();
-                    document.getElementById('bms-url').value = config.url || '';
-                    document.getElementById('bms-location-name').value = config.location_name || '';
-                    document.getElementById('bms-system-name').value = config.system_name || '';
-                    document.getElementById('bms-location-id').value = config.location_id || '';
-                    document.getElementById('bms-equipment-id').value = config.equipment_id || '';
-                    document.getElementById('bms-interval').value = config.interval || 60;
-                    document.getElementById('bms-enabled').checked = config.enabled || false;
+                    document.getElementById('bms-url').value = config.bms_url || '';
+                    document.getElementById('bms-location-name').value = config.bms_location_name || '';
+                    document.getElementById('bms-location-id').value = config.bms_location_id || '';
+                    document.getElementById('bms-equipment-id').value = config.bms_equipment_id || '';
+                    document.getElementById('bms-interval').value = config.bms_interval || 60;
+                    document.getElementById('bms-enabled').checked = config.bms_enabled || false;
+                    
+                    // Show last send status
+                    if (config.bms_last_send) {
+                        const lastSend = new Date(config.bms_last_send);
+                        document.getElementById('bms-status').textContent = 
+                            `Last sent: ${lastSend.toLocaleString()} - Status: ${config.bms_status}`;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading BMS config:', error);
@@ -1139,26 +1196,26 @@
         }
         
         async function saveBMSConfig() {
+            const port = document.getElementById('bms-sensor-port').value;
             const config = {
-                url: document.getElementById('bms-url').value,
-                location_name: document.getElementById('bms-location-name').value,
-                system_name: document.getElementById('bms-system-name').value,
-                location_id: document.getElementById('bms-location-id').value,
-                equipment_id: document.getElementById('bms-equipment-id').value,
-                interval: parseInt(document.getElementById('bms-interval').value),
-                enabled: document.getElementById('bms-enabled').checked
+                bms_url: document.getElementById('bms-url').value,
+                bms_location_name: document.getElementById('bms-location-name').value,
+                bms_location_id: document.getElementById('bms-location-id').value,
+                bms_equipment_id: document.getElementById('bms-equipment-id').value,
+                bms_interval: parseInt(document.getElementById('bms-interval').value),
+                bms_enabled: document.getElementById('bms-enabled').checked
             };
             
             // Validate required fields
-            if (config.enabled) {
-                if (!config.location_name || !config.system_name || !config.location_id || !config.equipment_id) {
+            if (config.bms_enabled) {
+                if (!config.bms_url || !config.bms_location_name || !config.bms_location_id || !config.bms_equipment_id) {
                     document.getElementById('bms-error').textContent = 'All fields are required when BMS integration is enabled';
                     return;
                 }
             }
             
             try {
-                const response = await authenticatedFetch(`${API_BASE}/bms/config`, {
+                const response = await authenticatedFetch(`${API_BASE}/bms/config/${port}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
@@ -1167,6 +1224,8 @@
                 if (response.ok) {
                     alert('BMS configuration saved successfully!');
                     closeBMSModal();
+                    // Refresh sensor data to show updated BMS status
+                    loadSensorData();
                 } else {
                     const error = await response.json();
                     document.getElementById('bms-error').textContent = error.error || 'Failed to save configuration';

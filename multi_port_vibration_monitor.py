@@ -157,6 +157,15 @@ class EquipmentConfig:
     accel_scale: float = 1.0      # scaling factor
     baseline_velocity: float = 0.0  # baseline for relative measurements
     baseline_accel: float = 0.0     # baseline for relative measurements
+    # BMS configuration per sensor
+    bms_enabled: bool = False
+    bms_url: str = ""
+    bms_location_name: str = ""
+    bms_location_id: str = ""
+    bms_equipment_id: str = ""
+    bms_interval: int = 60  # seconds
+    bms_last_send: str = ""
+    bms_status: str = "disabled"  # disabled, sent, failed
     
     def get_iso_thresholds(self) -> Dict[str, float]:
         """Get ISO 10816-3 thresholds based on equipment type and power"""
@@ -834,36 +843,43 @@ class MultiPortVibrationMonitor:
             print(f"Error saving BMS configuration: {e}")
     
     def send_to_bms(self):
-        """Send current readings to BMS using InfluxDB line protocol"""
-        if not self.bms_config['enabled'] or not self.latest_readings:
+        """Send current readings to BMS using InfluxDB line protocol - per sensor"""
+        if not self.latest_readings:
             return
             
-        # Check if enough time has passed since last send
         now = datetime.now()
-        if self.bms_config['last_send']:
-            last_send = datetime.fromisoformat(self.bms_config['last_send']) if isinstance(self.bms_config['last_send'], str) else self.bms_config['last_send']
-            if (now - last_send).total_seconds() < self.bms_config['interval']:
-                return
         
+        # Get device IP once
+        import socket
         try:
-            import requests
-            
-            # Get device IP
-            import socket
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(("8.8.8.8", 80))
-                device_ip = s.getsockname()[0]
-                s.close()
-            except:
-                device_ip = "unknown"
-            
-            # Build line protocol for each sensor
-            line_protocols = []
-            
-            for port, reading in self.latest_readings.items():
-                if reading and port in self.equipment_configs:
-                    config = self.equipment_configs[port]
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            device_ip = s.getsockname()[0]
+            s.close()
+        except:
+            device_ip = "unknown"
+        
+        # Process each sensor individually
+        for port, reading in self.latest_readings.items():
+            if reading and port in self.equipment_configs:
+                config = self.equipment_configs[port]
+                
+                # Skip if BMS not enabled for this sensor
+                if not config.bms_enabled or not config.bms_url:
+                    config.bms_status = "disabled"
+                    continue
+                
+                # Check if enough time has passed since last send for this sensor
+                if config.bms_last_send:
+                    try:
+                        last_send = datetime.fromisoformat(config.bms_last_send)
+                        if (now - last_send).total_seconds() < config.bms_interval:
+                            continue
+                    except:
+                        pass
+                
+                try:
+                    import requests
                     
                     # Determine alert status for this sensor
                     alert_status = "Normal"
@@ -875,11 +891,11 @@ class MultiPortVibrationMonitor:
                     # Build InfluxDB line protocol for this sensor
                     line_protocol = (
                         f"vibration_metrics,"
-                        f"location={self.bms_config['location_name']},"
+                        f"location={config.bms_location_name},"
                         f"system={config.equipment_name},"  # Use sensor's configured name
                         f"equipment_type={config.equipment_type},"
-                        f"location_id={self.bms_config['location_id']},"
-                        f"equipmentId={self.bms_config['equipment_id']},"
+                        f"location_id={config.bms_location_id},"
+                        f"equipmentId={config.bms_equipment_id},"
                         f"sensor_port={port} "  # Space after tags is important!
                         f"velocity_mms={reading.velocity_mms:.2f},"
                         f"acceleration_g={reading.rms_acceleration:.3f},"
@@ -894,27 +910,25 @@ class MultiPortVibrationMonitor:
                         f"source=\"vibration-monitor-{device_ip}\""
                     )
                     
-                    line_protocols.append(line_protocol)
-            
-            if line_protocols:
-                # Send all sensor data in one request (multiple lines)
-                all_data = '\n'.join(line_protocols)
-                
-                response = requests.post(
-                    self.bms_config['url'],
-                    data=all_data,
-                    headers={'Content-Type': 'text/plain'},
-                    timeout=5
-                )
-                
-                if response.status_code in [200, 204]:
-                    self.bms_config['last_send'] = now.isoformat()
-                    print(f"Sent {len(line_protocols)} sensor metrics to BMS")
-                else:
-                    print(f"BMS send failed: {response.status_code} - {response.text}")
+                    # Send this sensor's data
+                    response = requests.post(
+                        config.bms_url,
+                        data=line_protocol,
+                        headers={'Content-Type': 'text/plain'},
+                        timeout=5
+                    )
                     
-        except Exception as e:
-            print(f"Error sending to BMS: {e}")
+                    if response.status_code in [200, 204]:
+                        config.bms_last_send = now.isoformat()
+                        config.bms_status = "sent"
+                        print(f"BMS: Sent {config.equipment_name} metrics")
+                    else:
+                        config.bms_status = "failed"
+                        print(f"BMS: Failed {config.equipment_name}: {response.status_code}")
+                        
+                except Exception as e:
+                    config.bms_status = "failed"
+                    print(f"BMS Error for {config.equipment_name}: {e}")
 
 # Flask API Routes
 @app.route('/api/auth/login', methods=['POST'])
@@ -1720,6 +1734,10 @@ def get_readings():
                 sensor_data['phase'] = equipment_config.phase
                 sensor_data['rpm'] = equipment_config.rpm
                 sensor_data['mounting'] = equipment_config.mounting
+                # Add BMS status
+                sensor_data['bms_enabled'] = equipment_config.bms_enabled
+                sensor_data['bms_status'] = equipment_config.bms_status
+                sensor_data['bms_last_send'] = equipment_config.bms_last_send
             
             readings[reading.sensor_id] = sensor_data
             
@@ -2062,51 +2080,70 @@ def zero_calibration(port):
     else:
         return jsonify({'error': 'No current reading available'}), 400
 
-@app.route('/api/bms/config', methods=['GET'])
+@app.route('/api/bms/config/<port>', methods=['GET'])
 @require_auth
-def get_bms_config():
-    """Get BMS configuration"""
+def get_bms_config(port):
+    """Get BMS configuration for specific sensor"""
     global monitor_instance
     
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    # Convert port format if needed
+    if not port.startswith('/dev/'):
+        port = f'/dev/{port}'
         
+    if port not in monitor_instance.equipment_configs:
+        return jsonify({'error': f'Sensor {port} not configured'}), 404
+        
+    config = monitor_instance.equipment_configs[port]
+    
     return jsonify({
-        'enabled': monitor_instance.bms_config['enabled'],
-        'url': monitor_instance.bms_config['url'],
-        'location_name': monitor_instance.bms_config['location_name'],
-        'system_name': monitor_instance.bms_config['system_name'],
-        'location_id': monitor_instance.bms_config['location_id'],
-        'equipment_id': monitor_instance.bms_config['equipment_id'],
-        'interval': monitor_instance.bms_config['interval']
+        'port': port,
+        'equipment_name': config.equipment_name,
+        'bms_enabled': config.bms_enabled,
+        'bms_url': config.bms_url,
+        'bms_location_name': config.bms_location_name,
+        'bms_location_id': config.bms_location_id,
+        'bms_equipment_id': config.bms_equipment_id,
+        'bms_interval': config.bms_interval,
+        'bms_status': config.bms_status,
+        'bms_last_send': config.bms_last_send
     })
 
-@app.route('/api/bms/config', methods=['POST'])
+@app.route('/api/bms/config/<port>', methods=['POST'])
 @require_auth
-def set_bms_config():
-    """Update BMS configuration"""
+def set_bms_config(port):
+    """Update BMS configuration for specific sensor"""
     global monitor_instance
     
     if not monitor_instance:
         return jsonify({'error': 'Monitor not initialized'}), 500
+    
+    # Convert port format if needed
+    if not port.startswith('/dev/'):
+        port = f'/dev/{port}'
         
+    if port not in monitor_instance.equipment_configs:
+        return jsonify({'error': f'Sensor {port} not configured'}), 404
+        
+    config = monitor_instance.equipment_configs[port]
     data = request.get_json()
     
-    # Update configuration
-    monitor_instance.bms_config['enabled'] = data.get('enabled', False)
-    monitor_instance.bms_config['url'] = data.get('url', '')
-    monitor_instance.bms_config['location_name'] = data.get('location_name', '')
-    monitor_instance.bms_config['system_name'] = data.get('system_name', '')
-    monitor_instance.bms_config['location_id'] = data.get('location_id', '')
-    monitor_instance.bms_config['equipment_id'] = data.get('equipment_id', '')
-    monitor_instance.bms_config['interval'] = data.get('interval', 60)
+    # Update BMS configuration for this sensor
+    config.bms_enabled = data.get('bms_enabled', False)
+    config.bms_url = data.get('bms_url', '')
+    config.bms_location_name = data.get('bms_location_name', '')
+    config.bms_location_id = data.get('bms_location_id', '')
+    config.bms_equipment_id = data.get('bms_equipment_id', '')
+    config.bms_interval = data.get('bms_interval', 60)
     
-    # Save to .env file
-    monitor_instance.save_bms_configuration()
+    # Save configuration
+    monitor_instance.save_configuration()
     
     return jsonify({
         'success': True,
-        'message': 'BMS configuration saved'
+        'message': f'BMS configuration saved for {config.equipment_name}'
     })
 
 def main():
