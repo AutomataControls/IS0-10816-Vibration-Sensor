@@ -259,9 +259,9 @@ class InstallerWindow:
         for widget in self.root.winfo_children():
             widget.destroy()
             
-        # Welcome frame
+        # Welcome frame with less padding
         welcome_frame = tk.Frame(self.root, bg=self.bg_color)
-        welcome_frame.pack(fill=tk.BOTH, expand=True, padx=40, pady=40)
+        welcome_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=20)
         
         # Logo and title
         header_frame = tk.Frame(welcome_frame, bg=self.bg_color)
@@ -282,8 +282,8 @@ class InstallerWindow:
                     if os.path.exists(logo_path):
                         try:
                             img = Image.open(logo_path)
-                            # Keep aspect ratio - logo might not be square
-                            img.thumbnail((100, 100), Image.LANCZOS)
+                            # Keep aspect ratio - logo might not be square, make it larger
+                            img.thumbnail((150, 150), Image.LANCZOS)
                             self.welcome_logo = ImageTk.PhotoImage(img)
                             logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
                             logo_label.pack(pady=5)
@@ -315,16 +315,16 @@ class InstallerWindow:
                                justify="center")
         welcome_text.pack(pady=(0, 20))
         
-        # License frame
+        # License frame - don't expand, use fixed height
         license_frame = tk.LabelFrame(welcome_frame, text="Commercial License Agreement", 
                                      font=("Arial", 12, "bold"), fg=self.text_color, bg=self.bg_color)
-        license_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        license_frame.pack(fill=tk.BOTH, expand=False, pady=(0, 10))
         
-        # License text
-        license_text = tk.Text(license_frame, height=12, width=70, 
+        # License text with fixed height
+        license_text = tk.Text(license_frame, height=10, width=70, 
                               font=("Courier", 9), bg="white", fg=self.text_color,
                               wrap=tk.WORD, relief=tk.FLAT, bd=1)
-        license_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        license_text.pack(padx=10, pady=10, fill=tk.BOTH, expand=False)
         
         license_content = """COMMERCIAL LICENSE NOTICE
 
@@ -370,22 +370,22 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
         button_frame.pack(fill=tk.X, pady=(20, 0))
         
-        # Create button with larger font and moderate height
+        # Create buttons with simplified layout
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
-                                              font=("Arial", 13), bg="#e5e7eb", 
+                                              font=("Arial", 12), bg="#e5e7eb", 
                                               fg=self.text_color, 
                                               relief=tk.FLAT, command=self.root.quit,
-                                              width=15, height=2)
-        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10, ipady=8)
+                                              padx=30, pady=15)
+        self.cancel_welcome_button.pack(side=tk.LEFT, padx=20)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
-                                      font=("Arial", 13, "bold"), 
+                                      font=("Arial", 12, "bold"), 
                                       bg=self.primary_color, fg="white",
                                       relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license,
-                                      width=15, height=2)
-        self.accept_button.pack(side=tk.RIGHT, padx=10, ipady=8)
+                                      padx=30, pady=15)
+        self.accept_button.pack(side=tk.RIGHT, padx=20)
         
     def check_accept_button(self):
         """Enable/disable accept button based on checkbox"""
