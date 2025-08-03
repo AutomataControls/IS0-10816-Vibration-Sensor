@@ -103,11 +103,8 @@ class InstallerWindow:
                 if os.path.exists(logo_path):
                     if PIL_AVAILABLE:
                         img = Image.open(logo_path)
-                        # Use LANCZOS directly for older PIL versions
-                        try:
-                            img = img.resize((60, 60), Image.Resampling.LANCZOS)
-                        except AttributeError:
-                            img = img.resize((60, 60), Image.LANCZOS)
+                        # Keep aspect ratio - logo might not be square
+                        img.thumbnail((80, 80), Image.LANCZOS)
                         self.logo_img = ImageTk.PhotoImage(img)
                         logo_label = tk.Label(logo_frame, image=self.logo_img, bg=self.bg_color)
                         logo_label.pack()
@@ -285,14 +282,11 @@ class InstallerWindow:
                     if os.path.exists(logo_path):
                         try:
                             img = Image.open(logo_path)
-                            # Use LANCZOS directly for older PIL versions
-                            try:
-                                img = img.resize((80, 80), Image.Resampling.LANCZOS)
-                            except AttributeError:
-                                img = img.resize((80, 80), Image.LANCZOS)
+                            # Keep aspect ratio - logo might not be square
+                            img.thumbnail((100, 100), Image.LANCZOS)
                             self.welcome_logo = ImageTk.PhotoImage(img)
                             logo_label = tk.Label(header_frame, image=self.welcome_logo, bg=self.bg_color)
-                            logo_label.pack()
+                            logo_label.pack(pady=5)
                             logo_loaded = True
                             print(f"Logo loaded from: {logo_path}")
                             break
@@ -376,22 +370,22 @@ By clicking "I Accept", you acknowledge that you have read and agree to these te
         button_frame = tk.Frame(welcome_frame, bg=self.bg_color)
         button_frame.pack(fill=tk.X, pady=(20, 0))
         
-        # Create button with larger font and explicit height
+        # Create button with larger font and moderate height
         self.cancel_welcome_button = tk.Button(button_frame, text="Cancel", 
-                                              font=("Arial", 14), bg="#e5e7eb", 
+                                              font=("Arial", 13), bg="#e5e7eb", 
                                               fg=self.text_color, 
                                               relief=tk.FLAT, command=self.root.quit,
-                                              width=12, height=3)
-        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10, pady=5, ipady=10)
+                                              width=15, height=2)
+        self.cancel_welcome_button.pack(side=tk.LEFT, padx=10, ipady=8)
         
         self.accept_button = tk.Button(button_frame, text="I Accept", 
-                                      font=("Arial", 14, "bold"), 
+                                      font=("Arial", 13, "bold"), 
                                       bg=self.primary_color, fg="white",
                                       relief=tk.FLAT,
                                       state=tk.DISABLED,
                                       command=self.accept_license,
-                                      width=12, height=3)
-        self.accept_button.pack(side=tk.RIGHT, padx=10, pady=5, ipady=10)
+                                      width=15, height=2)
+        self.accept_button.pack(side=tk.RIGHT, padx=10, ipady=8)
         
     def check_accept_button(self):
         """Enable/disable accept button based on checkbox"""
