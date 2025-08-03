@@ -976,6 +976,10 @@ def login():
             'sub': 'api-user'
         }, SECRET_KEY, algorithm='HS256')
         
+        # Convert bytes to string if needed (for PyJWT >= 2.0)
+        if isinstance(token, bytes):
+            token = token.decode('utf-8')
+        
         # Add to active tokens
         active_tokens.add(token)
         
