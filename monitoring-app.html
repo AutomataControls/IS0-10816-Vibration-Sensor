@@ -1159,6 +1159,10 @@
         
         // BMS Configuration functions (per-sensor)
         function showBMSConfigForSensor(port, sensorName) {
+            // Ensure port doesn't have /dev/ prefix for consistency
+            if (port.startsWith('/dev/')) {
+                port = port.replace('/dev/', '');
+            }
             document.getElementById('bms-sensor-port').value = port;
             document.getElementById('bms-sensor-name').textContent = `Sensor: ${sensorName}`;
             document.getElementById('bms-modal').style.display = 'flex';
@@ -1173,6 +1177,10 @@
         
         async function loadBMSConfig(port) {
             try {
+                // Ensure consistent port format (no /dev/ prefix in URL)
+                if (port.startsWith('/dev/')) {
+                    port = port.replace('/dev/', '');
+                }
                 const response = await authenticatedFetch(`${API_BASE}/bms/config/${port}`);
                 if (response.ok) {
                     const config = await response.json();
@@ -1196,7 +1204,11 @@
         }
         
         async function saveBMSConfig() {
-            const port = document.getElementById('bms-sensor-port').value;
+            let port = document.getElementById('bms-sensor-port').value;
+            // Ensure consistent port format (no /dev/ prefix in URL)
+            if (port.startsWith('/dev/')) {
+                port = port.replace('/dev/', '');
+            }
             const config = {
                 bms_url: document.getElementById('bms-url').value,
                 bms_location_name: document.getElementById('bms-location-name').value,
