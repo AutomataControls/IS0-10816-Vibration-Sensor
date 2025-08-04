@@ -30,8 +30,10 @@ sudo apt-get install -y \
     libayatana-appindicator3-dev \
     librsvg2-dev
 
-# Navigate to Rust project
-cd src-tauri
+# Find the project root and navigate to Rust project
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+cd "$PROJECT_ROOT/src-tauri"
 
 # Build directly with cargo
 echo "Building with cargo (this may take a while)..."
